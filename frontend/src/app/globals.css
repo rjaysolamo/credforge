@@ -1,0 +1,235 @@
+:root {
+  --bg: #081f2f;
+  --bg-alt: #0f2d42;
+  --panel: rgba(255, 255, 255, 0.08);
+  --panel-border: rgba(255, 255, 255, 0.18);
+  --text: #eff8ff;
+  --muted: #b8cfdf;
+  --accent: #f4a800;
+  --danger: #ff6b6b;
+  --success: #63d297;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  min-height: 100%;
+}
+
+body {
+  font-family: "Space Grotesk", "Manrope", "Segoe UI", sans-serif;
+  color: var(--text);
+  background:
+    radial-gradient(1200px 600px at 85% -10%, #2b5b84 0%, transparent 60%),
+    radial-gradient(900px 600px at -15% 110%, #124d62 0%, transparent 55%),
+    linear-gradient(165deg, var(--bg) 0%, var(--bg-alt) 100%);
+}
+
+.shell {
+  width: min(1180px, 100% - 2rem);
+  margin: 2rem auto 3rem;
+  display: grid;
+  gap: 1rem;
+}
+
+.hero {
+  border: 1px solid var(--panel-border);
+  border-radius: 20px;
+  padding: 1.25rem 1.4rem;
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.05));
+}
+
+.kicker {
+  margin: 0;
+  color: var(--accent);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-weight: 700;
+  font-size: 0.78rem;
+}
+
+.hero h1 {
+  margin: 0.35rem 0 0;
+  font-size: clamp(1.6rem, 3.6vw, 2.5rem);
+}
+
+.heroCopy {
+  margin: 0.5rem 0 0;
+  max-width: 720px;
+  color: var(--muted);
+}
+
+.heroMeta {
+  margin-top: 1rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.8rem;
+  align-items: center;
+}
+
+.grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+}
+
+.card {
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: 16px;
+  padding: 1rem;
+  backdrop-filter: blur(8px);
+  grid-column: span 4;
+}
+
+.card.wide {
+  grid-column: span 8;
+}
+
+.card h2 {
+  margin: 0 0 0.8rem;
+  font-size: 1rem;
+}
+
+form {
+  display: grid;
+  gap: 0.7rem;
+}
+
+.columns2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.7rem;
+}
+
+.full {
+  grid-column: 1 / -1;
+}
+
+label {
+  display: grid;
+  gap: 0.32rem;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+input {
+  width: 100%;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  background: rgba(8, 15, 25, 0.42);
+  color: var(--text);
+  padding: 0.6rem 0.7rem;
+  outline: none;
+}
+
+input:focus {
+  border-color: var(--accent);
+}
+
+button {
+  border: 0;
+  border-radius: 10px;
+  background: linear-gradient(125deg, #f4a800, #ffd26a);
+  color: #17202a;
+  font-weight: 700;
+  padding: 0.58rem 0.8rem;
+  cursor: pointer;
+}
+
+button:hover {
+  filter: brightness(1.04);
+}
+
+.hint {
+  margin: 0.35rem 0 0;
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+
+.status {
+  border: 1px solid var(--panel-border);
+  border-radius: 12px;
+  padding: 0.72rem 0.82rem;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.status.loading {
+  border-color: #efbc52;
+}
+
+.status.success {
+  border-color: #68d8a4;
+}
+
+.status.error {
+  border-color: #ff8585;
+}
+
+.trust {
+  margin: 0.7rem 0 0;
+  font-weight: 700;
+}
+
+.trust.ok {
+  color: var(--success);
+}
+
+.trust.bad {
+  color: var(--danger);
+}
+
+.tableWrap {
+  overflow-x: auto;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+th,
+td {
+  text-align: left;
+  padding: 0.55rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+th {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+code {
+  font-family: "IBM Plex Mono", "SFMono-Regular", Menlo, monospace;
+}
+
+@media (max-width: 1020px) {
+  .card {
+    grid-column: span 6;
+  }
+
+  .card.wide {
+    grid-column: span 12;
+  }
+}
+
+@media (max-width: 700px) {
+  .shell {
+    width: min(1180px, 100% - 1rem);
+    margin-top: 1rem;
+  }
+
+  .card {
+    grid-column: span 12;
+  }
+
+  .columns2 {
+    grid-template-columns: 1fr;
+  }
+}
