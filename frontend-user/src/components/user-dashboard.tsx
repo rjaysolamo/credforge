@@ -208,6 +208,7 @@ export function UserDashboard() {
   const [imageByObjectId, setImageByObjectId] = useState<Record<string, string>>({});
   const [fullName, setFullName] = useState("");
   const [fullNameSaved, setFullNameSaved] = useState("");
+  const [previewImage, setPreviewImage] = useState("");
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -608,17 +609,19 @@ export function UserDashboard() {
                         </div>
                         <div className="credentialMedia">
                           {row.metadataHash ? (
-                            <a
-                              href={imageByObjectId[row.objectId] || toIpfsUrl(row.metadataHash)}
-                              target="_blank"
-                              rel="noreferrer"
+                            <button
+                              type="button"
+                              className="imageButton"
+                              onClick={() =>
+                                setPreviewImage(imageByObjectId[row.objectId] || toIpfsUrl(row.metadataHash))
+                              }
                             >
                               <img
                                 className="certThumb"
                                 src={imageByObjectId[row.objectId] || toIpfsUrl(row.metadataHash)}
                                 alt="Certificate"
                               />
-                            </a>
+                            </button>
                           ) : (
                             <span>-</span>
                           )}
@@ -650,17 +653,19 @@ export function UserDashboard() {
                             <td>{row.credentialType || "-"}</td>
                             <td>
                               {row.metadataHash ? (
-                                <a
-                                  href={imageByObjectId[row.objectId] || toIpfsUrl(row.metadataHash)}
-                                  target="_blank"
-                                  rel="noreferrer"
+                                <button
+                                  type="button"
+                                  className="imageButton"
+                                  onClick={() =>
+                                    setPreviewImage(imageByObjectId[row.objectId] || toIpfsUrl(row.metadataHash))
+                                  }
                                 >
                                   <img
                                     className="certThumb"
                                     src={imageByObjectId[row.objectId] || toIpfsUrl(row.metadataHash)}
                                     alt="Certificate"
                                   />
-                                </a>
+                                </button>
                               ) : (
                                 "-"
                               )}
@@ -711,6 +716,20 @@ export function UserDashboard() {
               ) : null}
             </article>
           </section>
+          {previewImage ? (
+            <div className="imageModal" onClick={() => setPreviewImage("")}>
+              <div className="imageModalCard" onClick={(event) => event.stopPropagation()}>
+                <button
+                  type="button"
+                  className="secondary closeModal"
+                  onClick={() => setPreviewImage("")}
+                >
+                  Close
+                </button>
+                <img src={previewImage} alt="Credential preview" className="imageModalPreview" />
+              </div>
+            </div>
+          ) : null}
         </>
       )}
     </main>

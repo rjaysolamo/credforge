@@ -40,7 +40,7 @@ const E_BATCH_LENGTH_MISMATCH: u64 = 3;
 const E_ISSUER_MISMATCH: u64 = 4;
 const E_ISSUER_NOT_TRUSTED: u64 = 5;
 
-public entry fun create_registry(ctx: &mut TxContext) {
+public fun create_registry(ctx: &mut TxContext) {
     let registry = Registry {
         id: object::new(ctx),
         admin: tx_context::sender(ctx),
@@ -50,7 +50,7 @@ public entry fun create_registry(ctx: &mut TxContext) {
     transfer::share_object(registry);
 }
 
-public entry fun register_issuer(
+public fun register_issuer(
     name: vector<u8>,
     ctx: &mut TxContext,
 ) {
@@ -63,7 +63,7 @@ public entry fun register_issuer(
     transfer::share_object(issuer);
 }
 
-public entry fun add_issuer_to_registry(
+public fun add_issuer_to_registry(
     registry: &mut Registry,
     issuer_addr: address,
     ctx: &TxContext,
@@ -77,7 +77,7 @@ public entry fun add_issuer_to_registry(
     vector::push_back(&mut registry.issuers, issuer_addr);
 }
 
-public entry fun issue_credential(
+public fun issue_credential(
     registry: &Registry,
     issuer: &Issuer,
     recipient: address,
@@ -106,7 +106,7 @@ public entry fun issue_credential(
     transfer::transfer(credential, recipient);
 }
 
-public entry fun batch_issue(
+public fun batch_issue(
     registry: &Registry,
     issuer: &Issuer,
     recipients: vector<address>,
@@ -153,7 +153,7 @@ public entry fun batch_issue(
     };
 }
 
-public entry fun revoke_credential(
+public fun revoke_credential(
     credential: &mut Credential,
     issuer: &Issuer,
     ctx: &TxContext,
@@ -172,38 +172,4 @@ public fun is_trusted(
     issuer: address,
 ): bool {
     vector::contains(&registry.issuers, &issuer)
-}
-
-#[test_only]
-public fun new_registry_for_testing(ctx: &mut TxContext): Registry {
-    Registry {
-        id: object::new(ctx),
-        admin: tx_context::sender(ctx),
-        issuers: vector[],
-    }
-}
-
-#[test_only]
-public fun new_issuer_for_testing(
-    name: vector<u8>,
-    admin: address,
-    ctx: &mut TxContext,
-): Issuer {
-    Issuer {
-        id: object::new(ctx),
-        name,
-        admin,
-    }
-}
-
-#[test_only]
-public fun destroy_registry_for_testing(registry: Registry) {
-    let Registry { id, admin: _, issuers: _ } = registry;
-    id.delete();
-}
-
-#[test_only]
-public fun destroy_issuer_for_testing(issuer: Issuer) {
-    let Issuer { id, name: _, admin: _ } = issuer;
-    id.delete();
 }
