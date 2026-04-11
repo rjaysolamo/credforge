@@ -32,15 +32,15 @@ body {
 
 .shell {
   width: min(1180px, 100% - 2rem);
-  margin: 2rem auto 3rem;
+  margin: 0.65rem auto 1rem;
   display: grid;
-  gap: 1rem;
+  gap: 0.45rem;
 }
 
 .hero {
   border: 1px solid var(--panel-border);
   border-radius: 20px;
-  padding: 1.25rem 1.4rem;
+  padding: 0.7rem 0.85rem;
   background: linear-gradient(160deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.05));
 }
 
@@ -54,27 +54,43 @@ body {
 }
 
 .hero h1 {
-  margin: 0.35rem 0 0;
+  margin: 0.2rem 0 0;
   font-size: clamp(1.6rem, 3.6vw, 2.5rem);
 }
 
 .heroCopy {
-  margin: 0.5rem 0 0;
+  margin: 0.25rem 0 0;
   max-width: 720px;
   color: var(--muted);
 }
 
 .heroMeta {
-  margin-top: 1rem;
+  margin-top: 0.45rem;
   display: flex;
   flex-wrap: wrap;
-  gap: 0.8rem;
+  gap: 0.4rem;
   align-items: center;
+}
+
+.heroPills {
+  margin-top: 0.35rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.miniPill {
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 999px;
+  padding: 0.25rem 0.62rem;
+  font-size: 0.78rem;
+  color: #dbe9f4;
+  background: rgba(255, 255, 255, 0.06);
 }
 
 .grid {
   display: grid;
-  gap: 1rem;
+  gap: 0.45rem;
   grid-template-columns: repeat(12, minmax(0, 1fr));
 }
 
@@ -82,7 +98,7 @@ body {
   background: var(--panel);
   border: 1px solid var(--panel-border);
   border-radius: 16px;
-  padding: 1rem;
+  padding: 0.65rem;
   backdrop-filter: blur(8px);
   grid-column: span 4;
 }
@@ -92,18 +108,26 @@ body {
 }
 
 .card h2 {
-  margin: 0 0 0.8rem;
+  margin: 0 0 0.45rem;
   font-size: 1rem;
+}
+
+.actionCard {
+  padding-top: 0.65rem;
+}
+
+.cardLead {
+  margin: -0.15rem 0 0.35rem;
 }
 
 form {
   display: grid;
-  gap: 0.7rem;
+  gap: 0.45rem;
 }
 
 .columns2 {
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.7rem;
+  gap: 0.45rem;
 }
 
 .full {
@@ -112,7 +136,7 @@ form {
 
 label {
   display: grid;
-  gap: 0.32rem;
+  gap: 0.2rem;
   font-size: 0.9rem;
   color: var(--muted);
 }
@@ -123,7 +147,7 @@ input {
   border: 1px solid rgba(255, 255, 255, 0.24);
   background: rgba(8, 15, 25, 0.42);
   color: var(--text);
-  padding: 0.6rem 0.7rem;
+  padding: 0.45rem 0.55rem;
   outline: none;
 }
 
@@ -137,7 +161,7 @@ button {
   background: linear-gradient(125deg, #f4a800, #ffd26a);
   color: #17202a;
   font-weight: 700;
-  padding: 0.58rem 0.8rem;
+  padding: 0.45rem 0.65rem;
   cursor: pointer;
 }
 
@@ -145,8 +169,12 @@ button:hover {
   filter: brightness(1.04);
 }
 
+.cta {
+  min-height: 34px;
+}
+
 .hint {
-  margin: 0.35rem 0 0;
+  margin: 0.15rem 0 0;
   color: var(--muted);
   font-size: 0.84rem;
 }
@@ -154,7 +182,7 @@ button:hover {
 .status {
   border: 1px solid var(--panel-border);
   border-radius: 12px;
-  padding: 0.72rem 0.82rem;
+  padding: 0.45rem 0.6rem;
   background: rgba(255, 255, 255, 0.06);
 }
 
@@ -171,7 +199,7 @@ button:hover {
 }
 
 .trust {
-  margin: 0.7rem 0 0;
+  margin: 0.3rem 0 0;
   font-weight: 700;
 }
 
@@ -196,13 +224,38 @@ table {
 th,
 td {
   text-align: left;
-  padding: 0.55rem;
+  padding: 0.4rem 0.38rem;
   border-bottom: 1px solid rgba(255, 255, 255, 0.12);
 }
 
 th {
   color: var(--muted);
   font-weight: 600;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+tbody tr:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  border: 1px solid currentcolor;
+  padding: 0.14rem 0.48rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.badge.active {
+  color: var(--success);
+}
+
+.badge.revoked {
+  color: var(--danger);
 }
 
 code {
@@ -222,7 +275,7 @@ code {
 @media (max-width: 700px) {
   .shell {
     width: min(1180px, 100% - 1rem);
-    margin-top: 1rem;
+    margin-top: 0.35rem;
   }
 
   .card {
@@ -232,4 +285,13 @@ code {
   .columns2 {
     grid-template-columns: 1fr;
   }
+}
+
+.certThumb {
+  width: 88px;
+  height: 56px;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid rgba(255,255,255,0.18);
+  background: rgba(255,255,255,0.08);
 }

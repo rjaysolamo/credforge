@@ -16,3 +16,7 @@ export function asIssuerList(raw: unknown): string[] {
 
   return [];
 }
+
+export function toBytes(value: string): number[] {
+  return Array.from(new TextEncoder().encode(value));
+}

@@ -1,6 +1,7 @@
 [package]
 name = "credforge"
 edition = "2024.beta" # edition = "legacy" to use legacy (pre-2024) Move
+published-at = "0x1ec5860e8e833eed86696b261504d1d60ab5d470f393e6fa7b19ffcbed4fb59a"
 # license = ""           # e.g., "MIT", "GPL", "Apache 2.0"
 # authors = ["..."]      # e.g., ["Joe Smith (joesmith@noemail.com)", "John Snow (johnsnow@noemail.com)"]
 
@@ -18,7 +19,7 @@ edition = "2024.beta" # edition = "legacy" to use legacy (pre-2024) Move
 # Override = { local = "../conflicting/version", override = true }
 
 [addresses]
-credforge = "0x0919628afc8c1b899147ffee9ac126dedb64211b909e07028e1b0ba24d77d802"
+credforge = "0x0"
 
 # Named addresses will be accessible in Move as `@name`. They're also exported:
 # for example, `std = "0x1"` is exported by the Standard Library.
@@ -33,4 +34,4 @@ credforge = "0x0919628afc8c1b899147ffee9ac126dedb64211b909e07028e1b0ba24d77d802"
 # The dev-addresses section allows overwriting named addresses for the `--test`
 # and `--dev` modes.
 # alice = "0xB0B"
-
+credforge = "0x0"

@@ -3,7 +3,7 @@ import { Providers } from "./providers";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "CredForge User",
+  title: "CredForge",
   description: "User-facing credential wallet for CredForge on Sui.",
 };
 

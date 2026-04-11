@@ -40,6 +40,16 @@ const E_BATCH_LENGTH_MISMATCH: u64 = 3;
 const E_ISSUER_MISMATCH: u64 = 4;
 const E_ISSUER_NOT_TRUSTED: u64 = 5;
 
+public entry fun create_registry(ctx: &mut TxContext) {
+    let registry = Registry {
+        id: object::new(ctx),
+        admin: tx_context::sender(ctx),
+        issuers: vector[],
+    };
+
+    transfer::share_object(registry);
+}
+
 public entry fun register_issuer(
     name: vector<u8>,
     ctx: &mut TxContext,

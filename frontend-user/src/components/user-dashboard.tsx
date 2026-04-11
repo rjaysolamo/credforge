@@ -5,65 +5,244 @@ import {
   useCurrentAccount,
   useCurrentWallet,
   useDisconnectWallet,
+  useSignAndExecuteTransaction,
   useSuiClient,
   useSuiClientQuery,
   useWallets,
 } from "@mysten/dapp-kit";
-import {
-  isEnokiWallet,
-  isFacebookWallet,
-  isGoogleWallet,
-  isTwitchWallet,
-} from "@mysten/enoki";
+import { isEnokiWallet, isGoogleWallet } from "@mysten/enoki";
+import { Transaction } from "@mysten/sui/transactions";
 import clsx from "clsx";
-import { FormEvent, useMemo, useState } from "react";
-import { asIssuerList, shortId } from "@/lib/codec";
-import { CREDENTIAL_TYPE, PACKAGE_ID, REGISTRY_ID } from "@/lib/env";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { useEnokiBootstrap } from "@/app/providers";
+import { asIssuerList, shortId, toBytes } from "@/lib/codec";
+import { CREDENTIAL_TYPE, REGISTRY_ID, TARGETS } from "@/lib/env";
 
 type CredentialRow = {
   objectId: string;
   recipient: string;
   issuer: string;
   credentialType: string;
+  metadataHash: string;
   issuedAt: string;
   revoked: boolean;
 };
 
+type ParsedQr = {
+  registryId: string;
+  issuerId: string;
+  credentialType: string;
+  metadataHash: string;
+};
+
+const FULL_NAME_STORAGE_KEY = "credforge_full_name";
+
+function decodeMaybeBytes(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (Array.isArray(value) && value.every((v) => typeof v === "number")) {
+    try {
+      return new TextDecoder().decode(new Uint8Array(value as number[]));
+    } catch {
+      return String(value);
+    }
+  }
+  return String(value ?? "");
+}
+
+function formatIssuedAt(value: string): string {
+  const raw = Number(value);
+  if (!Number.isFinite(raw) || raw <= 0) return "-";
+  const ms = raw < 100_000_000_000 ? raw * 1000 : raw;
+  return new Date(ms).toLocaleString();
+}
+
+function toIpfsUrl(hash: string): string {
+  const value = hash.trim();
+  if (!value) return "";
+  if (value.startsWith("http://") || value.startsWith("https://")) return value;
+  if (value.startsWith("ipfs://")) {
+    return `https://ipfs.io/ipfs/${value.replace("ipfs://", "")}`;
+  }
+  return `https://ipfs.io/ipfs/${value}`;
+}
+
+function ipfsCandidates(value: string): string[] {
+  const raw = value.trim();
+  if (!raw) return [];
+  if (raw.startsWith("http://") || raw.startsWith("https://")) return [raw];
+
+  const ipfsPath = raw.startsWith("ipfs://") ? raw.replace("ipfs://", "") : raw;
+  const gateways = [
+    "https://dweb.link/ipfs/",
+    "https://ipfs.io/ipfs/",
+    "https://gateway.pinata.cloud/ipfs/",
+  ];
+  return gateways.map((base) => `${base}${ipfsPath}`);
+}
+
+async function resolveCredentialImage(metadataHash: string): Promise<string> {
+  const directCandidates = ipfsCandidates(metadataHash);
+  if (directCandidates.length === 0) return "";
+
+  for (const url of directCandidates) {
+    try {
+      const response = await fetch(url);
+      if (!response.ok) continue;
+      const contentType = (response.headers.get("content-type") || "").toLowerCase();
+
+      if (contentType.startsWith("image/")) {
+        return url;
+      }
+
+      if (contentType.includes("json")) {
+        const json = (await response.json()) as Record<string, unknown>;
+        const imageValue = String(
+          json.image ??
+            json.image_url ??
+            json.certificate_image ??
+            json.animation_url ??
+            "",
+        ).trim();
+        if (!imageValue) continue;
+        const imageCandidates = ipfsCandidates(imageValue);
+        if (imageCandidates.length > 0) return imageCandidates[0];
+      }
+    } catch {
+      // Try next gateway/candidate.
+    }
+  }
+
+  return directCandidates[0];
+}
+
+function parseQrPayload(raw: string): ParsedQr | null {
+  const value = raw.trim();
+  if (!value) return null;
+
+  try {
+    if (value.startsWith("http://") || value.startsWith("https://")) {
+      const url = new URL(value);
+      const registryId =
+        url.searchParams.get("registryId") ??
+        url.searchParams.get("registry") ??
+        "";
+      const issuerId =
+        url.searchParams.get("issuerId") ??
+        url.searchParams.get("issuer") ??
+        "";
+      const credentialType =
+        url.searchParams.get("credentialType") ??
+        url.searchParams.get("type") ??
+        "course";
+      const metadataHash =
+        url.searchParams.get("metadataHash") ??
+        url.searchParams.get("hash") ??
+        "";
+
+      if (!registryId || !issuerId || !metadataHash) return null;
+      return { registryId, issuerId, credentialType, metadataHash };
+    }
+
+    const json = JSON.parse(value) as Record<string, unknown>;
+    const registryId =
+      String(json.registryId ?? json.registry ?? "").trim();
+    const issuerId = String(json.issuerId ?? json.issuer ?? "").trim();
+    const credentialType =
+      String(json.credentialType ?? json.type ?? "course").trim() || "course";
+    const metadataHash =
+      String(json.metadataHash ?? json.hash ?? "").trim();
+
+    if (!registryId || !issuerId || !metadataHash) return null;
+    return { registryId, issuerId, credentialType, metadataHash };
+  } catch {
+    return null;
+  }
+}
+
+function withFullNameMetadata(metadataHash: string, fullName: string): string {
+  const name = fullName.trim();
+  if (!name) return metadataHash;
+  const encoded = encodeURIComponent(name);
+  const value = metadataHash.trim();
+  if (!value) return value;
+
+  if (value.includes("{{full_name}}")) {
+    return value.replaceAll("{{full_name}}", encoded);
+  }
+  if (value.includes("{full_name}")) {
+    return value.replaceAll("{full_name}", encoded);
+  }
+  if (value.startsWith("http://") || value.startsWith("https://")) {
+    try {
+      const url = new URL(value);
+      if (!url.searchParams.get("full_name")) {
+        url.searchParams.set("full_name", name);
+      }
+      return url.toString();
+    } catch {
+      return value;
+    }
+  }
+  return value;
+}
+
 export function UserDashboard() {
+  const { ready: enokiReady, error: enokiError } = useEnokiBootstrap();
   const client = useSuiClient();
   const wallets = useWallets();
-  const { currentWallet, isConnected, isConnecting } = useCurrentWallet();
+  const { isConnected, isConnecting } = useCurrentWallet();
   const currentAccount = useCurrentAccount();
   const { mutateAsync: connectWallet } = useConnectWallet();
   const { mutate: disconnectWallet } = useDisconnectWallet();
+  const { mutateAsync: signAndExecuteTransaction } = useSignAndExecuteTransaction();
 
-  const [registryId, setRegistryId] = useState(REGISTRY_ID);
+  const [registryId] = useState(REGISTRY_ID);
   const [issuerToCheck, setIssuerToCheck] = useState("");
   const [trustResult, setTrustResult] = useState<null | boolean>(null);
   const [trustMessage, setTrustMessage] = useState("");
-  const [suiAddress, setSuiAddress] = useState("");
   const [status, setStatus] = useState("");
-  const [sessionJwtAvailable, setSessionJwtAvailable] = useState<boolean | null>(null);
+  const [signInAttempted, setSignInAttempted] = useState(false);
+
+  const [scanRunning, setScanRunning] = useState(false);
+  const [copyMessage, setCopyMessage] = useState("");
+  const [imageByObjectId, setImageByObjectId] = useState<Record<string, string>>({});
+  const [fullName, setFullName] = useState("");
+  const [fullNameSaved, setFullNameSaved] = useState("");
+
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const rafRef = useRef<number | null>(null);
 
   const enokiWallets = useMemo(() => wallets.filter((w) => isEnokiWallet(w)), [wallets]);
-  const googleWallet = useMemo(() => enokiWallets.find((w) => isGoogleWallet(w)), [enokiWallets]);
-  const facebookWallet = useMemo(() => enokiWallets.find((w) => isFacebookWallet(w)), [enokiWallets]);
-  const twitchWallet = useMemo(() => enokiWallets.find((w) => isTwitchWallet(w)), [enokiWallets]);
-
-  const lookupOwner = suiAddress || currentAccount?.address || "";
+  const googleWallet = useMemo(
+    () =>
+      enokiWallets.find((w) => {
+        if (isGoogleWallet(w)) return true;
+        const name = String((w as { name?: string }).name ?? "").toLowerCase();
+        const id = String((w as { id?: string }).id ?? "").toLowerCase();
+        return name.includes("google") || id.includes("google");
+      }),
+    [enokiWallets],
+  );
+  const lookupOwner = currentAccount?.address || "";
+  const connectedAddress = currentAccount?.address ?? "";
 
   const credentialsQuery = useSuiClientQuery(
     "getOwnedObjects",
     {
       owner: lookupOwner || "0x0",
-      filter: { StructType: CREDENTIAL_TYPE },
       options: { showContent: true, showType: true },
     },
     { enabled: !!lookupOwner },
   );
 
   const rows = useMemo<CredentialRow[]>(() => {
-    return (credentialsQuery.data?.data ?? []).map((item) => {
+    return (credentialsQuery.data?.data ?? [])
+      .filter((item) => {
+        const objectType = String(item.data?.type ?? "");
+        return objectType.endsWith("::credforge::Credential");
+      })
+      .map((item) => {
       const content = item.data?.content as
         | { fields?: Record<string, unknown> }
         | undefined;
@@ -73,16 +252,214 @@ export function UserDashboard() {
         objectId: item.data?.objectId ?? "",
         recipient: String(fields.recipient ?? ""),
         issuer: String(fields.issuer ?? ""),
-        credentialType: String(fields.credential_type ?? ""),
+        credentialType: decodeMaybeBytes(fields.credential_type),
+        metadataHash: decodeMaybeBytes(fields.metadata_hash),
         issuedAt: String(fields.issued_at ?? ""),
         revoked: Boolean(fields.revoked ?? false),
       };
     });
   }, [credentialsQuery.data?.data]);
 
-  async function signInWith(wallet: (typeof enokiWallets)[number] | undefined) {
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem(FULL_NAME_STORAGE_KEY) || "";
+      if (saved) setFullName(saved);
+    } catch {
+      // Ignore localStorage read issues.
+    }
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadImages() {
+      const missing = rows.filter(
+        (row) => row.metadataHash && !imageByObjectId[row.objectId],
+      );
+      if (missing.length === 0) return;
+
+      const entries = await Promise.all(
+        missing.map(async (row) => {
+          const imageUrl = await resolveCredentialImage(row.metadataHash);
+          return [row.objectId, imageUrl] as const;
+        }),
+      );
+
+      if (cancelled) return;
+      setImageByObjectId((prev) => {
+        const next = { ...prev };
+        for (const [objectId, imageUrl] of entries) {
+          next[objectId] = imageUrl;
+        }
+        return next;
+      });
+    }
+
+    loadImages();
+    return () => {
+      cancelled = true;
+    };
+  }, [rows, imageByObjectId]);
+
+  function stopScanner() {
+    if (rafRef.current) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
+
+    if (streamRef.current) {
+      for (const track of streamRef.current.getTracks()) track.stop();
+      streamRef.current = null;
+    }
+
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+
+    setScanRunning(false);
+  }
+
+  useEffect(() => {
+    return () => stopScanner();
+  }, []);
+
+  async function startScanner() {
+    if (scanRunning) return;
+
+    const Detector = (window as Window & { BarcodeDetector?: new (options?: { formats?: string[] }) => { detect: (source: HTMLVideoElement) => Promise<Array<{ rawValue?: string }>> } }).BarcodeDetector;
+
+    if (!Detector) {
+      setStatus("QR scanning is not supported in this browser. Use Chrome on mobile/desktop.");
+      return;
+    }
+
+    try {
+      setStatus("Opening camera...");
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: "environment" } },
+        audio: false,
+      });
+
+      streamRef.current = stream;
+      if (!videoRef.current) return;
+
+      videoRef.current.srcObject = stream;
+      await videoRef.current.play();
+
+      const detector = new Detector({ formats: ["qr_code"] });
+      setScanRunning(true);
+
+      const loop = async () => {
+        if (!videoRef.current) return;
+
+        try {
+          const codes = await detector.detect(videoRef.current);
+          const qrValue = codes.find((c) => typeof c.rawValue === "string")?.rawValue;
+
+          if (qrValue) {
+            const parsed = parseQrPayload(qrValue);
+            if (!parsed) {
+              setStatus("Invalid QR format for minting.");
+              stopScanner();
+              return;
+            }
+
+            await mintFromParsedQr(parsed);
+            stopScanner();
+            return;
+          }
+        } catch {
+          // Ignore transient detection errors and keep scanning.
+        }
+
+        rafRef.current = requestAnimationFrame(loop);
+      };
+
+      rafRef.current = requestAnimationFrame(loop);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Camera access failed.";
+      setStatus(`Unable to start camera: ${message}`);
+      stopScanner();
+    }
+  }
+
+  async function mintFromParsedQr(parsed: ParsedQr) {
+    if (!connectedAddress) {
+      setStatus("Connect your account first.");
+      return;
+    }
+    if (!fullName.trim() || fullName.trim().length < 3) {
+      setStatus("Enter your full name before minting.");
+      return;
+    }
+
+    try {
+      setStatus("Mint transaction in progress...");
+      const metadataHashWithName = withFullNameMetadata(parsed.metadataHash, fullName);
+
+      const tx = new Transaction();
+      tx.moveCall({
+        target: TARGETS.issueCredential,
+        arguments: [
+          tx.object(parsed.registryId),
+          tx.object(parsed.issuerId),
+          tx.pure.address(connectedAddress),
+          tx.pure.vector("u8", toBytes(parsed.credentialType || "course")),
+          tx.pure.vector("u8", toBytes(metadataHashWithName)),
+        ],
+      });
+      tx.setGasBudget(100_000_000);
+
+      const result = (await signAndExecuteTransaction({ transaction: tx })) as {
+        digest?: string;
+      };
+
+      setStatus(`Mint submitted. Digest: ${result.digest ?? "submitted"}`);
+      credentialsQuery.refetch();
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Mint failed.";
+      setStatus(`Mint failed: ${message}`);
+    }
+  }
+
+  function saveFullName() {
+    const value = fullName.trim();
+    if (!value || value.length < 3) {
+      setStatus("Please provide your full name (at least 3 characters).");
+      return;
+    }
+    try {
+      window.localStorage.setItem(FULL_NAME_STORAGE_KEY, value);
+      setFullName(value);
+      setFullNameSaved("Full name saved.");
+      setStatus("Profile ready. You can mint your credential now.");
+    } catch {
+      setFullNameSaved("Unable to persist full name in browser storage.");
+    }
+  }
+
+  async function copyWalletAddress() {
+    if (!connectedAddress) return;
+    try {
+      await navigator.clipboard.writeText(connectedAddress);
+      setCopyMessage("Wallet address copied.");
+    } catch {
+      setCopyMessage("Copy failed. Please copy manually.");
+    }
+  }
+
+  async function signIn() {
+    setSignInAttempted(true);
+    const wallet = googleWallet;
+
+    if (!enokiReady) {
+      setStatus(enokiError ?? "Google sign-in is still initializing. Try again.");
+      return;
+    }
+
     if (!wallet) {
-      setStatus("Requested Enoki provider is not configured.");
+      setStatus("Google provider is not available. Check Enoki + OAuth config.");
       return;
     }
 
@@ -90,24 +467,12 @@ export function UserDashboard() {
       setStatus("Signing in...");
       await connectWallet({ wallet });
       setStatus("Signed in successfully.");
-      await refreshEnokiSession();
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Sign-in failed.");
-    }
-  }
-
-  async function refreshEnokiSession() {
-    try {
-      const feature = (currentWallet as any)?.features?.["enoki:getSession"];
-      if (!feature?.getSession) {
-        setSessionJwtAvailable(null);
-        return;
-      }
-
-      const session = await feature.getSession();
-      setSessionJwtAvailable(Boolean(session?.jwt));
-    } catch {
-      setSessionJwtAvailable(null);
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Sign-in failed. Check popup permissions and OAuth config.";
+      setStatus(`Sign-in failed: ${message}`);
     }
   }
 
@@ -127,8 +492,7 @@ export function UserDashboard() {
         options: { showContent: true },
       });
 
-      const fields = (registry.data?.content as { fields?: Record<string, unknown> })
-        ?.fields;
+      const fields = (registry.data?.content as { fields?: Record<string, unknown> })?.fields;
       const issuers = asIssuerList(fields?.issuers);
       const trusted = issuers.includes(issuerToCheck);
       setTrustResult(trusted);
@@ -144,166 +508,211 @@ export function UserDashboard() {
 
   return (
     <main className="shell">
-      <section className="hero">
-        <p className="tag">CredForge User Portal</p>
-        <h1>Your Verifiable Credentials</h1>
-        <p className="heroSubtitle">
-          Sign in with zkLogin using Enoki, then inspect your issued credentials and
-          verify issuer trust directly from on-chain registry data.
-        </p>
+      {!isConnected ? (
+        <section className="hero authHero">
+          <p className="tag">CredForge</p>
+          <h1>Your Credentials</h1>
+          <p className="heroSubtitle">
+            Sign in with Google to view your Sui credentials and verify trusted issuers.
+          </p>
+          <ul className="authList">
+            <li className="authPoint">Secure Sui zkLogin with your Google account</li>
+            <li className="authPoint">View active and revoked credentials in one place</li>
+            <li className="authPoint">Check if an issuer is trusted by your registry</li>
+          </ul>
 
-        <div className="heroRow">
-          <button
-            type="button"
-            onClick={() => signInWith(googleWallet)}
-            disabled={isConnecting}
-          >
-            Continue with Google
-          </button>
-          <button
-            type="button"
-            onClick={() => signInWith(facebookWallet)}
-            disabled={isConnecting}
-          >
-            Continue with Facebook
-          </button>
-          <button
-            type="button"
-            onClick={() => signInWith(twitchWallet)}
-            disabled={isConnecting}
-          >
-            Continue with Twitch
-          </button>
-          {isConnected ? (
-            <button type="button" className="secondary" onClick={() => disconnectWallet()}>
-              Sign Out
+          <div className="heroRow">
+            <button type="button" onClick={signIn} disabled={isConnecting}>
+              {isConnecting ? "Connecting..." : "Continue with Google"}
             </button>
-          ) : null}
-        </div>
+          </div>
 
-        <div className="metaStrip">
-          <span className={clsx("pill", isConnected ? "okPill" : "warnPill")}>
-            {isConnected ? "Connected" : "Not Connected"}
-          </span>
-          <span className="pill">Providers: {enokiWallets.length}</span>
-          <span className="pill">
-            Account:{" "}
-            {currentAccount?.address ? shortId(currentAccount.address) : "Not connected"}
-          </span>
-        </div>
-
-        {enokiWallets.length === 0 ? (
-          <p className="hint warning">
-            No Enoki wallets found. Check `NEXT_PUBLIC_ENOKI_API_KEY`, OAuth client IDs, allowed
-            origins, and redirect URL in Enoki/Google console.
-          </p>
-        ) : null}
-        {status ? <p className="hint">{status}</p> : null}
-      </section>
-
-      <section className="grid">
-        <article className="card">
-          <h2>Registry</h2>
-          <label>
-            Registry Object ID
-            <input
-              value={registryId}
-              onChange={(event) => setRegistryId(event.target.value.trim())}
-              placeholder="0x..."
-            />
-          </label>
-          <p className="hint">
-            Package: <code>{shortId(PACKAGE_ID, 8)}</code>
-          </p>
-        </article>
-
-        <article className="card wide">
-          <h2>Address To View</h2>
-          <p className="hint cardHint">
-            Leave empty to use your currently connected zkLogin address.
-          </p>
-          <form
-            onSubmit={(event) => {
-              event.preventDefault();
-              credentialsQuery.refetch();
-            }}
-            className="trustForm"
-          >
-            <input
-              value={suiAddress}
-              onChange={(event) => setSuiAddress(event.target.value.trim())}
-              placeholder="Optional Sui address (defaults to connected zkLogin account)"
-            />
-            <button type="submit">Load</button>
-          </form>
-          <p className="hint">
-            Sponsored tx readiness (optional):{" "}
-            {sessionJwtAvailable === null ? "Unknown" : sessionJwtAvailable ? "JWT session available" : "No JWT in session"}
-          </p>
-          <button type="button" className="secondary" onClick={refreshEnokiSession}>
-            Refresh Enoki Session
-          </button>
-        </article>
-
-        <article className="card wide">
-          <h2>Check Issuer Trust</h2>
-          <form onSubmit={checkIssuerTrust} className="trustForm">
-            <input
-              value={issuerToCheck}
-              onChange={(event) => setIssuerToCheck(event.target.value.trim())}
-              placeholder="Issuer address (0x...)"
-            />
-            <button type="submit">Verify</button>
-          </form>
-          {trustMessage ? (
-            <p className={clsx("status", trustResult === true && "ok", trustResult === false && "bad")}>
-              {trustMessage}
+          {enokiError ? <p className="hint warning">{enokiError}</p> : null}
+          {status ? <p className="hint">{status}</p> : null}
+          {signInAttempted && enokiWallets.length === 0 && !enokiError ? (
+            <p className="hint warning">
+              Google sign-in is not configured yet. Set Enoki API key + Google OAuth and try again.
             </p>
           ) : null}
-        </article>
-      </section>
+        </section>
+      ) : (
+        <>
+          <section className="hero">
+            <p className="tag">CredForge</p>
+            <h1>Your Credentials</h1>
+            <p className="heroSubtitle">
+              Connected with Google. Scan your certification QR and mint to your Sui wallet.
+            </p>
 
-      <section className="card">
-        <h2>Credentials</h2>
-        {credentialsQuery.isLoading ? <p>Loading...</p> : null}
-        {!credentialsQuery.isLoading && !lookupOwner ? (
-          <p className="hint">Sign in first or enter a Sui address.</p>
-        ) : null}
-        {!credentialsQuery.isLoading && lookupOwner && rows.length === 0 ? (
-          <p className="hint">No credentials found.</p>
-        ) : null}
+            <div className="heroRow">
+              <button type="button" className="secondary" onClick={() => disconnectWallet()}>
+                Sign Out
+              </button>
+            </div>
 
-        {rows.length > 0 ? (
-          <div className="tableWrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Credential ID</th>
-                  <th>Type</th>
-                  <th>Issuer</th>
-                  <th>Recipient</th>
-                  <th>Issued At</th>
-                  <th>Revoked</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((row) => (
-                  <tr key={row.objectId}>
-                    <td>{shortId(row.objectId)}</td>
-                    <td>{row.credentialType || "-"}</td>
-                    <td>{shortId(row.issuer)}</td>
-                    <td>{shortId(row.recipient)}</td>
-                    <td>{row.issuedAt || "-"}</td>
-                    <td className={row.revoked ? "badText" : "okText"}>
-                      {row.revoked ? "Revoked" : "Active"}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : null}
-      </section>
+            <div className="metaStrip">
+              <span className={clsx("pill", "okPill")}>Connected</span>
+              <span className="pill">
+                Account: {connectedAddress ? shortId(connectedAddress) : "Not connected"}
+              </span>
+              <button type="button" className="secondary copyBtn" onClick={copyWalletAddress}>
+                Copy Wallet
+              </button>
+              <span className="pill">
+                Credentials: {rows.length}
+              </span>
+            </div>
+            <div className="profileRow">
+              <input
+                value={fullName}
+                onChange={(event) => {
+                  setFullName(event.target.value);
+                  if (fullNameSaved) setFullNameSaved("");
+                }}
+                placeholder="Full name for certificate"
+              />
+              <button type="button" className="secondary" onClick={saveFullName}>
+                Save Name
+              </button>
+            </div>
+            {fullNameSaved ? <p className="hint">{fullNameSaved}</p> : null}
+            {copyMessage ? <p className="hint">{copyMessage}</p> : null}
+          </section>
+
+          <section className="dashboardGrid">
+            <section className="card credentialsCard mainCol">
+              <h2>My Credentials</h2>
+              {credentialsQuery.isLoading ? <p className="hint">Loading credentials...</p> : null}
+              {credentialsQuery.error ? (
+                <p className="hint warning">
+                  Failed to load credentials. Check the address/network and try again.
+                </p>
+              ) : null}
+              {!credentialsQuery.isLoading && !lookupOwner ? (
+                <p className="hint">Sign in first or enter a Sui address.</p>
+              ) : null}
+              {!credentialsQuery.isLoading && lookupOwner && rows.length === 0 ? (
+                <p className="hint emptyState">No credentials found for this address.</p>
+              ) : null}
+
+              {rows.length > 0 ? (
+                <>
+                  <div className="credentialList">
+                    {rows.map((row) => (
+                      <article key={`mobile-${row.objectId}`} className="credentialItem">
+                        <div className="credentialTop">
+                          <strong>{row.credentialType || "Credential"}</strong>
+                          <span className={clsx("badge", row.revoked ? "badText" : "okText")}>
+                            {row.revoked ? "Revoked" : "Active"}
+                          </span>
+                        </div>
+                        <div className="credentialMedia">
+                          {row.metadataHash ? (
+                            <a
+                              href={imageByObjectId[row.objectId] || toIpfsUrl(row.metadataHash)}
+                              target="_blank"
+                              rel="noreferrer"
+                            >
+                              <img
+                                className="certThumb"
+                                src={imageByObjectId[row.objectId] || toIpfsUrl(row.metadataHash)}
+                                alt="Certificate"
+                              />
+                            </a>
+                          ) : (
+                            <span>-</span>
+                          )}
+                        </div>
+                        <p><strong>ID:</strong> {shortId(row.objectId)}</p>
+                        <p><strong>Issuer:</strong> {shortId(row.issuer)}</p>
+                        <p><strong>Recipient:</strong> {shortId(row.recipient)}</p>
+                        <p><strong>Issued:</strong> {formatIssuedAt(row.issuedAt)}</p>
+                      </article>
+                    ))}
+                  </div>
+                  <div className="tableWrap desktopTable">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Credential ID</th>
+                          <th>Type</th>
+                          <th>Certificate</th>
+                          <th>Issuer</th>
+                          <th>Recipient</th>
+                          <th>Issued At</th>
+                          <th>Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {rows.map((row) => (
+                          <tr key={row.objectId}>
+                            <td title={row.objectId}>{shortId(row.objectId)}</td>
+                            <td>{row.credentialType || "-"}</td>
+                            <td>
+                              {row.metadataHash ? (
+                                <a
+                                  href={imageByObjectId[row.objectId] || toIpfsUrl(row.metadataHash)}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                >
+                                  <img
+                                    className="certThumb"
+                                    src={imageByObjectId[row.objectId] || toIpfsUrl(row.metadataHash)}
+                                    alt="Certificate"
+                                  />
+                                </a>
+                              ) : (
+                                "-"
+                              )}
+                            </td>
+                            <td title={row.issuer}>{shortId(row.issuer)}</td>
+                            <td title={row.recipient}>{shortId(row.recipient)}</td>
+                            <td>{formatIssuedAt(row.issuedAt)}</td>
+                            <td>
+                              <span className={clsx("badge", row.revoked ? "badText" : "okText")}>
+                                {row.revoked ? "Revoked" : "Active"}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              ) : null}
+            </section>
+
+            <article className="card scanCard sideCol">
+              <div className="scanActions">
+                <button type="button" onClick={startScanner} disabled={scanRunning}>
+                  Mint
+                </button>
+              </div>
+
+              {scanRunning ? (
+                <video ref={videoRef} className="scannerVideo hiddenScanner" playsInline muted />
+              ) : null}
+            </article>
+
+            <article className="card verifyCard sideCol">
+              <h2>Verify Issuer</h2>
+              <form onSubmit={checkIssuerTrust} className="trustForm">
+                <input
+                  value={issuerToCheck}
+                  onChange={(event) => setIssuerToCheck(event.target.value.trim())}
+                  placeholder="Issuer address (0x...)"
+                />
+                <button type="submit">Verify</button>
+              </form>
+              {trustMessage ? (
+                <p className={clsx("status", trustResult === true && "ok", trustResult === false && "bad")}>
+                  {trustMessage}
+                </p>
+              ) : null}
+            </article>
+          </section>
+        </>
+      )}
     </main>
   );
 }

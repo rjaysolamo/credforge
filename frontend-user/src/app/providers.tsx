@@ -10,7 +10,14 @@ import {
 import { AuthProvider, EnokiClient, registerEnokiWallets } from "@mysten/enoki";
 import { getJsonRpcFullnodeUrl, SuiJsonRpcClient } from "@mysten/sui/jsonRpc";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { ReactNode, useEffect, useMemo } from "react";
+import {
+  createContext,
+  ReactNode,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import {
   ENOKI_API_KEY,
   ENOKI_FACEBOOK_CLIENT_ID,
@@ -29,14 +36,50 @@ const { networkConfig } = createNetworkConfig({
 const suiNetwork =
   NETWORK === "mainnet" || NETWORK === "devnet" ? NETWORK : "testnet";
 
+type EnokiBootstrapState = {
+  ready: boolean;
+  error: string | null;
+};
+
+const EnokiBootstrapContext = createContext<EnokiBootstrapState>({
+  ready: false,
+  error: null,
+});
+
+export function useEnokiBootstrap() {
+  return useContext(EnokiBootstrapContext);
+}
+
 export function Providers({ children }: { children: ReactNode }) {
   const queryClient = useMemo(() => new QueryClient(), []);
+  const [bootstrapState, setBootstrapState] = useState<EnokiBootstrapState>({
+    ready: false,
+    error: null,
+  });
 
   useEffect(() => {
-    if (!ENOKI_API_KEY) return;
+    if (!ENOKI_API_KEY) {
+      setBootstrapState({
+        ready: false,
+        error: "Missing NEXT_PUBLIC_ENOKI_API_KEY.",
+      });
+      return;
+    }
+
+    if (ENOKI_API_KEY.startsWith("enoki_private_")) {
+      setBootstrapState({
+        ready: false,
+        error:
+          "NEXT_PUBLIC_ENOKI_API_KEY is using a private key. Use your Enoki public key in browser apps.",
+      });
+      return;
+    }
 
     let unregister: (() => void) | undefined;
     let mounted = true;
+    setBootstrapState({ ready: false, error: null });
+
+    const explicitRedirectUrl = ENOKI_REDIRECT_URL.trim() || undefined;
 
     async function initEnokiWallets() {
       const providers: Partial<
@@ -44,22 +87,19 @@ export function Providers({ children }: { children: ReactNode }) {
       > = {};
 
       if (ENOKI_GOOGLE_CLIENT_ID) {
-        providers.google = {
-          clientId: ENOKI_GOOGLE_CLIENT_ID,
-          redirectUrl: ENOKI_REDIRECT_URL || undefined,
-        };
+        providers.google = explicitRedirectUrl
+          ? { clientId: ENOKI_GOOGLE_CLIENT_ID, redirectUrl: explicitRedirectUrl }
+          : { clientId: ENOKI_GOOGLE_CLIENT_ID };
       }
       if (ENOKI_FACEBOOK_CLIENT_ID) {
-        providers.facebook = {
-          clientId: ENOKI_FACEBOOK_CLIENT_ID,
-          redirectUrl: ENOKI_REDIRECT_URL || undefined,
-        };
+        providers.facebook = explicitRedirectUrl
+          ? { clientId: ENOKI_FACEBOOK_CLIENT_ID, redirectUrl: explicitRedirectUrl }
+          : { clientId: ENOKI_FACEBOOK_CLIENT_ID };
       }
       if (ENOKI_TWITCH_CLIENT_ID) {
-        providers.twitch = {
-          clientId: ENOKI_TWITCH_CLIENT_ID,
-          redirectUrl: ENOKI_REDIRECT_URL || undefined,
-        };
+        providers.twitch = explicitRedirectUrl
+          ? { clientId: ENOKI_TWITCH_CLIENT_ID, redirectUrl: explicitRedirectUrl }
+          : { clientId: ENOKI_TWITCH_CLIENT_ID };
       }
 
       // Fallback: auto-read enabled providers and client IDs from Enoki app config.
@@ -67,29 +107,43 @@ export function Providers({ children }: { children: ReactNode }) {
         try {
           const app = await new EnokiClient({ apiKey: ENOKI_API_KEY }).getApp();
           for (const auth of app.authenticationProviders) {
-            providers[auth.providerType] = {
-              clientId: auth.clientId,
-              redirectUrl: ENOKI_REDIRECT_URL || undefined,
-            };
+            providers[auth.providerType] = explicitRedirectUrl
+              ? { clientId: auth.clientId, redirectUrl: explicitRedirectUrl }
+              : { clientId: auth.clientId };
           }
         } catch (error) {
           console.error("Failed to auto-load Enoki providers from getApp()", error);
         }
       }
 
-      if (!mounted || Object.keys(providers).length === 0) return;
+      if (!mounted) return;
 
-      const result = registerEnokiWallets({
-        apiKey: ENOKI_API_KEY,
-        providers,
-        network: suiNetwork,
-        client: new SuiJsonRpcClient({
-          url: getJsonRpcFullnodeUrl(suiNetwork),
+      if (!providers.google) {
+        setBootstrapState({
+          ready: false,
+          error:
+            "Google provider is not configured. Set NEXT_PUBLIC_ENOKI_GOOGLE_CLIENT_ID or enable Google in Enoki.",
+        });
+        return;
+      }
+
+      try {
+        const result = registerEnokiWallets({
+          apiKey: ENOKI_API_KEY,
+          providers,
           network: suiNetwork,
-        }),
-      });
+          client: new SuiJsonRpcClient({
+            url: getJsonRpcFullnodeUrl(suiNetwork),
+            network: suiNetwork,
+          }),
+        });
 
-      unregister = result.unregister;
+        unregister = result.unregister;
+        setBootstrapState({ ready: true, error: null });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Enoki wallet registration failed.";
+        setBootstrapState({ ready: false, error: message });
+      }
     }
 
     initEnokiWallets();
@@ -106,7 +160,11 @@ export function Providers({ children }: { children: ReactNode }) {
         networks={networkConfig}
         defaultNetwork={suiNetwork}
       >
-        <WalletProvider autoConnect>{children}</WalletProvider>
+        <WalletProvider autoConnect>
+          <EnokiBootstrapContext.Provider value={bootstrapState}>
+            {children}
+          </EnokiBootstrapContext.Provider>
+        </WalletProvider>
       </SuiClientProvider>
     </QueryClientProvider>
   );

@@ -3,7 +3,7 @@ import { Providers } from "./providers";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "CredForge Console",
+  title: "CredForge Admin",
   description: "Sui credential issuance dashboard for the CredForge Move contract.",
 };
 

@@ -42,6 +42,23 @@ function statusClass(type: TxState["type"]): string {
   return "status";
 }
 
+function formatIssuedAt(value: string): string {
+  const raw = Number(value);
+  if (!Number.isFinite(raw) || raw <= 0) return "-";
+  const ms = raw < 100_000_000_000 ? raw * 1000 : raw;
+  return new Date(ms).toLocaleString();
+}
+
+function toIpfsUrl(hash: string): string {
+  const value = hash.trim();
+  if (!value) return "";
+  if (value.startsWith("http://") || value.startsWith("https://")) return value;
+  if (value.startsWith("ipfs://")) {
+    return `https://ipfs.io/ipfs/${value.replace("ipfs://", "")}`;
+  }
+  return `https://ipfs.io/ipfs/${value}`;
+}
+
 export function Dashboard() {
   const account = useCurrentAccount();
   const client = useSuiClient();
@@ -92,6 +109,7 @@ export function Dashboard() {
         revoked: Boolean(fields.revoked ?? false),
         issuedAt: String(fields.issued_at ?? ""),
         credentialType: String(fields.credential_type ?? ""),
+        metadataHash: String(fields.metadata_hash ?? ""),
       };
     });
   }, [credentialsQuery.data?.data]);
@@ -199,15 +217,26 @@ export function Dashboard() {
     <main className="shell">
       <section className="hero">
         <p className="kicker">CredForge on Sui</p>
-        <h1>Credential Registry Console</h1>
+        <h1>Credential Registry Admin</h1>
         <p className="heroCopy">
-          Register issuers, whitelist trusted institutions, issue soulbound
-          credentials, and revoke when necessary.
+          Manage issuer onboarding, trust controls, credential issuance, and
+          revocation from one admin workspace.
         </p>
         <div className="heroMeta">
           <ConnectButton />
           <span>
             Account: {account?.address ? shortId(account.address) : "Not connected"}
+          </span>
+        </div>
+        <div className="heroPills">
+          <span className="miniPill">
+            Package: <code>{shortId(PACKAGE_ID, 8)}</code>
+          </span>
+          <span className="miniPill">
+            Connected Credentials: {credentialRows.length}
+          </span>
+          <span className="miniPill">
+            Registry: {registryId ? shortId(registryId) : "Not set"}
           </span>
         </div>
       </section>
@@ -232,12 +261,13 @@ export function Dashboard() {
             />
           </label>
           <p className="hint">
-            Network/package are set via env. Package: <code>{shortId(PACKAGE_ID, 8)}</code>
+            Keep these IDs accurate before running issuer, issue, revoke, or trust actions.
           </p>
         </article>
 
-        <article className="card">
+        <article className="card actionCard">
           <h2>1. Register Issuer</h2>
+          <p className="hint cardLead">Create an on-chain issuer object with your wallet as admin.</p>
           <form onSubmit={onRegisterIssuer}>
             <label>
               Issuer Name
@@ -247,12 +277,13 @@ export function Dashboard() {
                 placeholder="My University"
               />
             </label>
-            <button type="submit">Register</button>
+            <button type="submit" className="cta">Register Issuer</button>
           </form>
         </article>
 
-        <article className="card">
+        <article className="card actionCard">
           <h2>2. Whitelist Issuer</h2>
+          <p className="hint cardLead">Allow only trusted issuer addresses to issue credentials.</p>
           <form onSubmit={onWhitelistIssuer}>
             <label>
               Issuer Address
@@ -262,12 +293,13 @@ export function Dashboard() {
                 placeholder="0x..."
               />
             </label>
-            <button type="submit">Whitelist</button>
+            <button type="submit" className="cta">Whitelist Issuer</button>
           </form>
         </article>
 
-        <article className="card wide">
+        <article className="card wide actionCard">
           <h2>3. Issue Credential</h2>
+          <p className="hint cardLead">Mint a soulbound credential directly to the recipient wallet.</p>
           <form onSubmit={onIssueCredential} className="columns2">
             <label>
               Recipient
@@ -299,8 +331,9 @@ export function Dashboard() {
           </form>
         </article>
 
-        <article className="card">
+        <article className="card actionCard">
           <h2>4. Revoke</h2>
+          <p className="hint cardLead">Mark a credential as revoked while keeping its on-chain record.</p>
           <form onSubmit={onRevokeCredential}>
             <label>
               Credential Object ID
@@ -310,12 +343,13 @@ export function Dashboard() {
                 placeholder="0x..."
               />
             </label>
-            <button type="submit">Revoke</button>
+            <button type="submit" className="cta">Revoke Credential</button>
           </form>
         </article>
 
-        <article className="card">
+        <article className="card actionCard">
           <h2>5. Check Trust</h2>
+          <p className="hint cardLead">Check whether an issuer address exists in your registry whitelist.</p>
           <form onSubmit={onCheckTrust}>
             <label>
               Issuer Address
@@ -325,7 +359,7 @@ export function Dashboard() {
                 placeholder="0x..."
               />
             </label>
-            <button type="submit">Check</button>
+            <button type="submit" className="cta">Verify Trust</button>
           </form>
           {trustCheckResult !== null ? (
             <p className={clsx("trust", trustCheckResult ? "ok" : "bad")}>
@@ -352,6 +386,7 @@ export function Dashboard() {
                 <tr>
                   <th>Object</th>
                   <th>Type</th>
+                  <th>Certificate</th>
                   <th>Issuer</th>
                   <th>Recipient</th>
                   <th>Issued At (ms)</th>
@@ -361,12 +396,29 @@ export function Dashboard() {
               <tbody>
                 {credentialRows.map((row) => (
                   <tr key={row.objectId}>
-                    <td>{shortId(row.objectId)}</td>
+                    <td title={row.objectId}>{shortId(row.objectId)}</td>
                     <td>{row.credentialType}</td>
-                    <td>{shortId(row.issuer)}</td>
-                    <td>{shortId(row.recipient)}</td>
-                    <td>{row.issuedAt}</td>
-                    <td>{row.revoked ? "yes" : "no"}</td>
+                    <td>
+                      {row.metadataHash ? (
+                        <a href={toIpfsUrl(row.metadataHash)} target="_blank" rel="noreferrer">
+                          <img
+                            className="certThumb"
+                            src={toIpfsUrl(row.metadataHash)}
+                            alt="Certificate"
+                          />
+                        </a>
+                      ) : (
+                        "-"
+                      )}
+                    </td>
+                    <td title={row.issuer}>{shortId(row.issuer)}</td>
+                    <td title={row.recipient}>{shortId(row.recipient)}</td>
+                    <td>{formatIssuedAt(row.issuedAt)}</td>
+                    <td>
+                      <span className={clsx("badge", row.revoked ? "revoked" : "active")}>
+                        {row.revoked ? "Revoked" : "Active"}
+                      </span>
+                    </td>
                   </tr>
                 ))}
               </tbody>
