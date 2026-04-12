@@ -2,11 +2,11 @@ export const NETWORK = process.env.NEXT_PUBLIC_SUI_NETWORK ?? "testnet";
 
 export const PACKAGE_ID =
   process.env.NEXT_PUBLIC_PACKAGE_ID ??
-  "0x8a083dab2646af64d9132f2afa957abb7fe5436885f2587e9315beede4927c24";
+  "0x2ac10462cd4540eb887cc2bdcfac10c66cff082efb6b7ba731798921827fa5c9";
 
 export const REGISTRY_ID =
   process.env.NEXT_PUBLIC_REGISTRY_ID ??
-  "0x9eb6db567df86b0acb0a791f5f3ea9dbdb5aac197e036ee2ec21e4ae4dd09fe1";
+  "0x156587b6931f8378ecb51b23e3e4070cab051b83b6cf282d51cfa605bfc359f4";
 
 export const MODULE = `${PACKAGE_ID}::credforge`;
 

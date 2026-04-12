@@ -36,6 +36,7 @@ type ParsedQr = {
 };
 
 const FULL_NAME_STORAGE_KEY = "credforge_full_name";
+const PROFILE_IMAGE_STORAGE_KEY = "credforge_profile_image";
 
 function decodeMaybeBytes(value: unknown): string {
   if (typeof value === "string") return value;
@@ -208,7 +209,10 @@ export function UserDashboard() {
   const [imageByObjectId, setImageByObjectId] = useState<Record<string, string>>({});
   const [fullName, setFullName] = useState("");
   const [fullNameSaved, setFullNameSaved] = useState("");
+  const [isNameLocked, setIsNameLocked] = useState(false);
   const [previewImage, setPreviewImage] = useState("");
+  const [profileImage, setProfileImage] = useState("");
+  const [profileImageMessage, setProfileImageMessage] = useState("");
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -264,7 +268,20 @@ export function UserDashboard() {
   useEffect(() => {
     try {
       const saved = window.localStorage.getItem(FULL_NAME_STORAGE_KEY) || "";
-      if (saved) setFullName(saved);
+      if (saved) {
+        setFullName(saved);
+        setIsNameLocked(true);
+        setFullNameSaved("Full name saved.");
+      }
+    } catch {
+      // Ignore localStorage read issues.
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem(PROFILE_IMAGE_STORAGE_KEY) || "";
+      if (saved) setProfileImage(saved);
     } catch {
       // Ignore localStorage read issues.
     }
@@ -434,9 +451,47 @@ export function UserDashboard() {
       window.localStorage.setItem(FULL_NAME_STORAGE_KEY, value);
       setFullName(value);
       setFullNameSaved("Full name saved.");
+      setIsNameLocked(true);
       setStatus("Profile ready. You can mint your credential now.");
     } catch {
       setFullNameSaved("Unable to persist full name in browser storage.");
+    }
+  }
+
+  function onProfileImageChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      setProfileImageMessage("Please select an image file.");
+      return;
+    }
+    if (file.size > 2_000_000) {
+      setProfileImageMessage("Image too large. Use a file under 2MB.");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = typeof reader.result === "string" ? reader.result : "";
+      if (!result) return;
+      setProfileImage(result);
+      setProfileImageMessage("Profile photo updated.");
+      try {
+        window.localStorage.setItem(PROFILE_IMAGE_STORAGE_KEY, result);
+      } catch {
+        setProfileImageMessage("Profile photo set, but could not be saved.");
+      }
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function clearProfileImage() {
+    setProfileImage("");
+    setProfileImageMessage("Profile photo cleared.");
+    try {
+      window.localStorage.removeItem(PROFILE_IMAGE_STORAGE_KEY);
+    } catch {
+      // Ignore localStorage failures.
     }
   }
 
@@ -552,32 +607,64 @@ export function UserDashboard() {
             </div>
 
             <div className="metaStrip">
-              <span className={clsx("pill", "okPill")}>Connected</span>
-              <span className="pill">
-                Account: {connectedAddress ? shortId(connectedAddress) : "Not connected"}
+              <span className="pill walletPill">
+                <span>Account: {connectedAddress ? shortId(connectedAddress) : "Not connected"}</span>
+                <button
+                  type="button"
+                  className="copyIconButton"
+                  onClick={copyWalletAddress}
+                  aria-label="Copy wallet address"
+                  title="Copy wallet address"
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <rect x="9" y="3" width="12" height="14" rx="2" />
+                    <rect x="3" y="7" width="12" height="14" rx="2" />
+                  </svg>
+                </button>
               </span>
-              <button type="button" className="secondary copyBtn" onClick={copyWalletAddress}>
-                Copy Wallet
-              </button>
               <span className="pill">
                 Credentials: {rows.length}
               </span>
             </div>
             <div className="profileRow">
-              <input
-                value={fullName}
-                onChange={(event) => {
-                  setFullName(event.target.value);
-                  if (fullNameSaved) setFullNameSaved("");
-                }}
-                placeholder="Full name for certificate"
-              />
-              <button type="button" className="secondary" onClick={saveFullName}>
-                Save Name
-              </button>
+              <div className="profilePicBlock">
+                <div className="profilePic">
+                  {profileImage ? (
+                    <img src={profileImage} alt="Profile" />
+                  ) : (
+                    <span>+</span>
+                  )}
+                </div>
+                {!profileImage ? (
+                  <div className="profilePicActions">
+                    <label className="profilePicLabel">
+                      <input type="file" accept="image/*" onChange={onProfileImageChange} />
+                      Upload Photo
+                    </label>
+                  </div>
+                ) : null}
+              </div>
+              {isNameLocked ? (
+                <div className="nameDisplay">{fullName}</div>
+              ) : (
+                <>
+                  <input
+                    value={fullName}
+                    onChange={(event) => {
+                      setFullName(event.target.value);
+                      if (fullNameSaved) setFullNameSaved("");
+                      if (isNameLocked) setIsNameLocked(false);
+                    }}
+                    placeholder="Full name for certificate"
+                  />
+                  <button type="button" className="secondary" onClick={saveFullName}>
+                    Save Name
+                  </button>
+                </>
+              )}
             </div>
-            {fullNameSaved ? <p className="hint">{fullNameSaved}</p> : null}
-            {copyMessage ? <p className="hint">{copyMessage}</p> : null}
+            {profileImageMessage ? <p className="hint">{profileImageMessage}</p> : null}
+            {status ? <p className="hint">{status}</p> : null}
           </section>
 
           <section className="dashboardGrid">

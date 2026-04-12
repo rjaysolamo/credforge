@@ -215,6 +215,34 @@ button:hover {
   overflow-x: auto;
 }
 
+.qrBlock {
+  margin-top: 0.6rem;
+  display: grid;
+  gap: 0.5rem;
+  align-items: start;
+}
+
+.qrImage {
+  width: 260px;
+  max-width: 100%;
+  border-radius: 12px;
+  border: 1px solid var(--panel-border);
+  background: #ffffff;
+  padding: 0.4rem;
+}
+
+.qrPayload {
+  width: 100%;
+  min-height: 110px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  background: rgba(8, 15, 25, 0.42);
+  color: var(--text);
+  padding: 0.45rem 0.55rem;
+  resize: vertical;
+  font-size: 0.85rem;
+}
+
 table {
   width: 100%;
   border-collapse: collapse;

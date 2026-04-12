@@ -9,6 +9,7 @@ import {
 import { Transaction } from "@mysten/sui/transactions";
 import clsx from "clsx";
 import { FormEvent, useState } from "react";
+import QRCode from "qrcode";
 import { REGISTRY_ID, TARGETS } from "@/lib/env";
 import { shortId, toBytes } from "@/lib/codec";
 
@@ -28,6 +29,31 @@ function isHexAddress(value: string): boolean {
 
 function isZeroObjectId(value: string): boolean {
   return /^0x0+$/.test(value.trim());
+}
+
+async function ensureObjectType(
+  client: ReturnType<typeof useSuiClient>,
+  objectId: string,
+  expectedSuffix: string,
+): Promise<{ ok: boolean; message?: string }> {
+  try {
+    const object = await client.getObject({
+      id: objectId,
+      options: { showType: true },
+    });
+    const objectType = String(object.data?.type ?? "");
+    if (!objectType.endsWith(expectedSuffix)) {
+      return {
+        ok: false,
+        message: `Expected ${expectedSuffix}, got ${objectType || "unknown type"}.`,
+      };
+    }
+    return { ok: true };
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Object lookup failed.";
+    return { ok: false, message };
+  }
 }
 
 function asIssuerList(raw: unknown): string[] {
@@ -67,6 +93,9 @@ export function Dashboard() {
   const [trustCheckAddress, setTrustCheckAddress] = useState("");
   const [trustCheckResult, setTrustCheckResult] = useState<null | boolean>(null);
   const [txState, setTxState] = useState<TxState>(initialTxState);
+  const [qrPayload, setQrPayload] = useState("");
+  const [qrImage, setQrImage] = useState("");
+  const [qrError, setQrError] = useState("");
 
   async function execute(label: string, build: (tx: Transaction) => void) {
     if (!account?.address) {
@@ -162,6 +191,30 @@ export function Dashboard() {
       });
       return;
     }
+    const registryCheck = await ensureObjectType(
+      client,
+      registryId,
+      "::credforge::Registry",
+    );
+    if (!registryCheck.ok) {
+      setTxState({
+        type: "error",
+        message: `Issue credential failed: registry object invalid. ${registryCheck.message ?? ""}`,
+      });
+      return;
+    }
+    const issuerCheck = await ensureObjectType(
+      client,
+      issuerId,
+      "::credforge::Issuer",
+    );
+    if (!issuerCheck.ok) {
+      setTxState({
+        type: "error",
+        message: `Issue credential failed: issuer object invalid. ${issuerCheck.message ?? ""}`,
+      });
+      return;
+    }
     await execute("Issue credential", (tx) => {
       tx.moveCall({
         target: TARGETS.issueCredential,
@@ -233,6 +286,45 @@ export function Dashboard() {
         type: "error",
         message: "Trust check failed. Verify registry object id.",
       });
+    }
+  }
+
+  async function onGenerateQr(event: FormEvent) {
+    event.preventDefault();
+    setQrError("");
+    setQrImage("");
+
+    if (!isHexAddress(registryId) || isZeroObjectId(registryId)) {
+      setQrError("Set a valid Registry Object ID before generating QR.");
+      return;
+    }
+    if (!isHexAddress(issuerId) || isZeroObjectId(issuerId)) {
+      setQrError("Set a valid Issuer Object ID before generating QR.");
+      return;
+    }
+    if (!metadataHash.trim()) {
+      setQrError("Metadata hash is required to generate the QR.");
+      return;
+    }
+
+    const payload = JSON.stringify({
+      registryId,
+      issuerId,
+      credentialType: credentialType || "course",
+      metadataHash: metadataHash.trim(),
+    });
+
+    try {
+      const dataUrl = await QRCode.toDataURL(payload, {
+        width: 260,
+        margin: 1,
+        errorCorrectionLevel: "M",
+      });
+      setQrPayload(payload);
+      setQrImage(dataUrl);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "QR generation failed.";
+      setQrError(message);
     }
   }
 
@@ -338,6 +430,41 @@ export function Dashboard() {
               Issue Soulbound Credential
             </button>
           </form>
+        </article>
+
+        <article className="card wide actionCard">
+          <h2>3B. Generate Mint QR</h2>
+          <p className="hint cardLead">
+            Create a QR code so users can scan and mint the credential in the user app.
+          </p>
+          <form onSubmit={onGenerateQr} className="columns2">
+            <label>
+              Credential Type
+              <input
+                value={credentialType}
+                onChange={(event) => setCredentialType(event.target.value)}
+                placeholder="course | event | mentorship"
+              />
+            </label>
+            <label>
+              Metadata Hash
+              <input
+                value={metadataHash}
+                onChange={(event) => setMetadataHash(event.target.value)}
+                placeholder="sha256/ipfs-hash pointer"
+              />
+            </label>
+            <button type="submit" className="full">
+              Generate QR Code
+            </button>
+          </form>
+          {qrError ? <p className="hint">{qrError}</p> : null}
+          {qrImage ? (
+            <div className="qrBlock">
+              <img className="qrImage" src={qrImage} alt="Mint QR" />
+              <textarea className="qrPayload" readOnly value={qrPayload} />
+            </div>
+          ) : null}
         </article>
 
         <article className="card actionCard">

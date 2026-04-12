@@ -110,6 +110,64 @@ body {
 
 .profileRow input {
   width: 100%;
+  font-weight: 600;
+}
+
+.nameDisplay {
+  font-weight: 600;
+  font-size: 1rem;
+  color: #193b32;
+  padding: 0.4rem 0;
+}
+
+.profilePicBlock {
+  display: flex;
+  gap: 0.6rem;
+  align-items: center;
+}
+
+.profilePic {
+  width: 80px;
+  height: 80px;
+  border-radius: 18px;
+  background: #e7f1ed;
+  border: 1px solid #b7cec5;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  font-weight: 700;
+  color: #4b6a5d;
+}
+
+.profilePic img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.profilePicActions {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.profilePicLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.6rem;
+  border-radius: 10px;
+  border: 1px solid #bed4cb;
+  background: #ebf2f0;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #264c41;
+  cursor: pointer;
+}
+
+.profilePicLabel input {
+  display: none;
 }
 
 .pill {
@@ -225,10 +283,29 @@ button.secondary {
   color: #264c41;
 }
 
-.copyBtn {
-  min-height: 38px;
-  padding: 0.32rem 0.65rem;
-  font-size: 0.8rem;
+.copyIconButton {
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  background: transparent;
+  display: inline-grid;
+  place-items: center;
+  margin-left: 0.35rem;
+}
+
+.copyIconButton svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: #0a0a0a;
+  stroke-width: 1.7;
+}
+
+.copyIconButton:hover {
+  filter: none;
+  opacity: 0.7;
 }
 
 button:disabled {
@@ -510,7 +587,7 @@ code {
   }
 
   .profileRow {
-    grid-template-columns: minmax(220px, 380px) auto;
+    grid-template-columns: minmax(260px, 1fr) minmax(220px, 380px) auto;
     align-items: center;
     justify-content: start;
   }

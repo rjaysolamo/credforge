@@ -12,8 +12,8 @@ public struct Credential has key {
     id: UID,
     recipient: address,
     issuer: address,
-    credential_type: vector<u8>, // "event", "mentorship", "course"
-    metadata_hash: vector<u8>, // Hash of off-chain JSON (e.g. IPFS metadata)
+    credential_type: vector<u8>,
+    metadata_hash: vector<u8>,
     issued_at: u64,
     revoked: bool,
 }
@@ -77,6 +77,10 @@ public fun add_issuer_to_registry(
     vector::push_back(&mut registry.issuers, issuer_addr);
 }
 
+/// ----------------------
+/// ISSUE (SOULBOUND)
+/// ----------------------
+
 public fun issue_credential(
     registry: &Registry,
     issuer: &Issuer,
@@ -97,14 +101,17 @@ public fun issue_credential(
         issued_at: tx_context::epoch_timestamp_ms(ctx),
         revoked: false,
     };
+
     let credential_id = object::id(&credential);
+
     event::emit(CredentialIssued {
         credential_id,
         recipient,
     });
 
-    transfer::transfer(credential, recipient);
+    transfer::share_object(credential);
 }
+
 
 public fun batch_issue(
     registry: &Registry,
@@ -129,6 +136,7 @@ public fun batch_issue(
     let mut credential_types = credential_types;
     let mut metadata_hashes = metadata_hashes;
     let issued_at = tx_context::epoch_timestamp_ms(ctx);
+
     while (!vector::is_empty(&recipients)) {
         let recipient = vector::pop_back(&mut recipients);
         let credential_type = vector::pop_back(&mut credential_types);
@@ -143,15 +151,19 @@ public fun batch_issue(
             issued_at,
             revoked: false,
         };
+
         let credential_id = object::id(&credential);
+
         event::emit(CredentialIssued {
             credential_id,
             recipient,
         });
 
-        transfer::transfer(credential, recipient);
+        transfer::share_object(credential);
     };
 }
+
+
 
 public fun revoke_credential(
     credential: &mut Credential,
@@ -162,9 +174,18 @@ public fun revoke_credential(
     assert!(credential.issuer == issuer.admin, E_ISSUER_MISMATCH);
 
     credential.revoked = true;
+
     event::emit(CredentialRevoked {
         credential_id: object::id(credential),
     });
+}
+
+
+public fun is_valid_owner(
+    credential: &Credential,
+    addr: address,
+): bool {
+    credential.recipient == addr
 }
 
 public fun is_trusted(
