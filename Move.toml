@@ -1,7 +1,7 @@
 [package]
 name = "credforge"
 edition = "2024.beta" # edition = "legacy" to use legacy (pre-2024) Move
-published-at = "0x1ec5860e8e833eed86696b261504d1d60ab5d470f393e6fa7b19ffcbed4fb59a"
+published-at = "0xc19171760aff5329b45e7315682fb1c3b12e588938494d686397731b261adc2d"
 # license = ""           # e.g., "MIT", "GPL", "Apache 2.0"
 # authors = ["..."]      # e.g., ["Joe Smith (joesmith@noemail.com)", "John Snow (johnsnow@noemail.com)"]
 

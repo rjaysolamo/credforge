@@ -29,6 +29,34 @@ type CredentialRow = {
 const FULL_NAME_STORAGE_KEY = "credforge_full_name";
 const PROFILE_IMAGE_STORAGE_KEY = "credforge_profile_image";
 
+function SuiLogoMark() {
+  return (
+    <svg viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="11" fill="#6FBCF0" />
+      <path
+        d="M12 4.7c2.85 3.26 5.8 5.85 5.8 9.14A5.8 5.8 0 0 1 12 19.64a5.8 5.8 0 0 1-5.8-5.8c0-3.29 2.95-5.88 5.8-9.14z"
+        fill="none"
+        stroke="#fff"
+        strokeWidth="1.5"
+      />
+      <path
+        d="M8.95 13.25c1 .64 2 .89 3.05.89 1.06 0 2.07-.25 3.1-.89"
+        fill="none"
+        stroke="#fff"
+        strokeWidth="1.2"
+        strokeLinecap="round"
+      />
+      <path
+        d="M9.35 15.83c.86.45 1.74.64 2.65.64.92 0 1.82-.19 2.7-.64"
+        fill="none"
+        stroke="#fff"
+        strokeWidth="1.1"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
 function decodeMaybeBytes(value: unknown): string {
   if (typeof value === "string") return value;
   if (Array.isArray(value) && value.every((v) => typeof v === "number")) {
@@ -359,19 +387,43 @@ export function UserDashboard() {
       {!isConnected ? (
         <section className="hero authHero">
           <p className="tag">CredForge</p>
-          <h1>Your Credentials</h1>
+          <div className="titleWithLogo">
+            <span className="suiLogo" aria-hidden="true">
+              <SuiLogoMark />
+            </span>
+            <h1>Your Credentials Onchain</h1>
+          </div>
           <p className="heroSubtitle">
             Sign in with Google to view your Sui credentials and verify trusted issuers.
           </p>
-          <ul className="authList">
-            <li className="authPoint">Secure Sui zkLogin with your Google account</li>
-            <li className="authPoint">View active and revoked credentials in one place</li>
-            <li className="authPoint">Check if an issuer is trusted by your registry</li>
-          </ul>
+          <p className="authWelcome">
+            Welcome to CredForge. Sign in to access your wallet-linked credentials, preview
+            your certificates, and verify issuer trust in one simple dashboard.
+          </p>
 
           <div className="heroRow">
-            <button type="button" onClick={signIn} disabled={isConnecting}>
-              {isConnecting ? "Connecting..." : "Continue with Google"}
+            <button type="button" className="googleButton" onClick={signIn} disabled={isConnecting}>
+              <span className="googleIcon" aria-hidden="true">
+                <svg viewBox="0 0 24 24">
+                  <path
+                    fill="#EA4335"
+                    d="M12 10.2v3.92h5.45c-.24 1.26-.95 2.33-2.02 3.04l3.27 2.53c1.9-1.75 3-4.32 3-7.39 0-.71-.06-1.4-.18-2.06H12z"
+                  />
+                  <path
+                    fill="#34A853"
+                    d="M12 22c2.7 0 4.97-.89 6.63-2.41l-3.27-2.53c-.9.6-2.05.95-3.36.95-2.58 0-4.77-1.74-5.56-4.07H3.06v2.61A10 10 0 0 0 12 22z"
+                  />
+                  <path
+                    fill="#FBBC05"
+                    d="M6.44 13.94a6.02 6.02 0 0 1 0-3.88V7.45H3.06a10 10 0 0 0 0 9.1l3.38-2.61z"
+                  />
+                  <path
+                    fill="#4285F4"
+                    d="M12 5.99c1.47 0 2.79.5 3.83 1.47l2.87-2.87A9.6 9.6 0 0 0 12 2 10 10 0 0 0 3.06 7.45l3.38 2.61C7.23 7.73 9.42 5.99 12 5.99z"
+                  />
+                </svg>
+              </span>
+              <span>{isConnecting ? "Connecting..." : "Continue with Google"}</span>
             </button>
           </div>
 
@@ -387,7 +439,12 @@ export function UserDashboard() {
         <>
           <section className="hero">
             <p className="tag">CredForge</p>
-            <h1>Your Credentials</h1>
+            <div className="titleWithLogo">
+              <span className="suiLogo" aria-hidden="true">
+                <SuiLogoMark />
+              </span>
+              <h1>Your Credentials Onchain</h1>
+            </div>
             <p className="heroSubtitle">
               Connected with Google. Issued credentials will appear in this wallet automatically.
             </p>
