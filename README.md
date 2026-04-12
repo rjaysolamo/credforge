@@ -7,6 +7,10 @@ It includes:
 - An **Admin Portal** (`frontend/`) for issuer operations and credential minting.
 - A **User Portal** (`frontend-user/`) for social sign-in and viewing owned credentials.
 
+## Pitch Deck
+
+[![CredForge Pitch Deck Cover](docs/pitch-cover.png)](docs/CredForge-Pitch-Deck.pdf)
+
 ## What It Does
 
 - Registry admins create a registry and whitelist trusted issuer addresses.
