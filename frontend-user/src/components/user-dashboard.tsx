@@ -5,18 +5,16 @@ import {
   useCurrentAccount,
   useCurrentWallet,
   useDisconnectWallet,
-  useSignAndExecuteTransaction,
   useSuiClient,
   useSuiClientQuery,
   useWallets,
 } from "@mysten/dapp-kit";
 import { isEnokiWallet, isGoogleWallet } from "@mysten/enoki";
-import { Transaction } from "@mysten/sui/transactions";
 import clsx from "clsx";
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useEnokiBootstrap } from "@/app/providers";
-import { asIssuerList, shortId, toBytes } from "@/lib/codec";
-import { CREDENTIAL_TYPE, REGISTRY_ID, TARGETS } from "@/lib/env";
+import { asIssuerList, shortId } from "@/lib/codec";
+import { REGISTRY_ID } from "@/lib/env";
 
 type CredentialRow = {
   objectId: string;
@@ -26,13 +24,6 @@ type CredentialRow = {
   metadataHash: string;
   issuedAt: string;
   revoked: boolean;
-};
-
-type ParsedQr = {
-  registryId: string;
-  issuerId: string;
-  credentialType: string;
-  metadataHash: string;
 };
 
 const FULL_NAME_STORAGE_KEY = "credforge_full_name";
@@ -116,77 +107,6 @@ async function resolveCredentialImage(metadataHash: string): Promise<string> {
   return directCandidates[0];
 }
 
-function parseQrPayload(raw: string): ParsedQr | null {
-  const value = raw.trim();
-  if (!value) return null;
-
-  try {
-    if (value.startsWith("http://") || value.startsWith("https://")) {
-      const url = new URL(value);
-      const registryId =
-        url.searchParams.get("registryId") ??
-        url.searchParams.get("registry") ??
-        "";
-      const issuerId =
-        url.searchParams.get("issuerId") ??
-        url.searchParams.get("issuer") ??
-        "";
-      const credentialType =
-        url.searchParams.get("credentialType") ??
-        url.searchParams.get("type") ??
-        "course";
-      const metadataHash =
-        url.searchParams.get("metadataHash") ??
-        url.searchParams.get("hash") ??
-        "";
-
-      if (!registryId || !issuerId || !metadataHash) return null;
-      return { registryId, issuerId, credentialType, metadataHash };
-    }
-
-    const json = JSON.parse(value) as Record<string, unknown>;
-    const registryId =
-      String(json.registryId ?? json.registry ?? "").trim();
-    const issuerId = String(json.issuerId ?? json.issuer ?? "").trim();
-    const credentialType =
-      String(json.credentialType ?? json.type ?? "course").trim() || "course";
-    const metadataHash =
-      String(json.metadataHash ?? json.hash ?? "").trim();
-
-    if (!registryId || !issuerId || !metadataHash) return null;
-    return { registryId, issuerId, credentialType, metadataHash };
-  } catch {
-    return null;
-  }
-}
-
-function withFullNameMetadata(metadataHash: string, fullName: string): string {
-  const name = fullName.trim();
-  if (!name) return metadataHash;
-  const encoded = encodeURIComponent(name);
-  const value = metadataHash.trim();
-  if (!value) return value;
-
-  if (value.includes("{{full_name}}")) {
-    return value.replaceAll("{{full_name}}", encoded);
-  }
-  if (value.includes("{full_name}")) {
-    return value.replaceAll("{full_name}", encoded);
-  }
-  if (value.startsWith("http://") || value.startsWith("https://")) {
-    try {
-      const url = new URL(value);
-      if (!url.searchParams.get("full_name")) {
-        url.searchParams.set("full_name", name);
-      }
-      return url.toString();
-    } catch {
-      return value;
-    }
-  }
-  return value;
-}
-
 export function UserDashboard() {
   const { ready: enokiReady, error: enokiError } = useEnokiBootstrap();
   const client = useSuiClient();
@@ -195,7 +115,6 @@ export function UserDashboard() {
   const currentAccount = useCurrentAccount();
   const { mutateAsync: connectWallet } = useConnectWallet();
   const { mutate: disconnectWallet } = useDisconnectWallet();
-  const { mutateAsync: signAndExecuteTransaction } = useSignAndExecuteTransaction();
 
   const [registryId] = useState(REGISTRY_ID);
   const [issuerToCheck, setIssuerToCheck] = useState("");
@@ -204,7 +123,6 @@ export function UserDashboard() {
   const [status, setStatus] = useState("");
   const [signInAttempted, setSignInAttempted] = useState(false);
 
-  const [scanRunning, setScanRunning] = useState(false);
   const [copyMessage, setCopyMessage] = useState("");
   const [imageByObjectId, setImageByObjectId] = useState<Record<string, string>>({});
   const [fullName, setFullName] = useState("");
@@ -213,10 +131,6 @@ export function UserDashboard() {
   const [previewImage, setPreviewImage] = useState("");
   const [profileImage, setProfileImage] = useState("");
   const [profileImageMessage, setProfileImageMessage] = useState("");
-
-  const videoRef = useRef<HTMLVideoElement | null>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const rafRef = useRef<number | null>(null);
 
   const enokiWallets = useMemo(() => wallets.filter((w) => isEnokiWallet(w)), [wallets]);
   const googleWallet = useMemo(
@@ -319,128 +233,6 @@ export function UserDashboard() {
     };
   }, [rows, imageByObjectId]);
 
-  function stopScanner() {
-    if (rafRef.current) {
-      cancelAnimationFrame(rafRef.current);
-      rafRef.current = null;
-    }
-
-    if (streamRef.current) {
-      for (const track of streamRef.current.getTracks()) track.stop();
-      streamRef.current = null;
-    }
-
-    if (videoRef.current) {
-      videoRef.current.srcObject = null;
-    }
-
-    setScanRunning(false);
-  }
-
-  useEffect(() => {
-    return () => stopScanner();
-  }, []);
-
-  async function startScanner() {
-    if (scanRunning) return;
-
-    const Detector = (window as Window & { BarcodeDetector?: new (options?: { formats?: string[] }) => { detect: (source: HTMLVideoElement) => Promise<Array<{ rawValue?: string }>> } }).BarcodeDetector;
-
-    if (!Detector) {
-      setStatus("QR scanning is not supported in this browser. Use Chrome on mobile/desktop.");
-      return;
-    }
-
-    try {
-      setStatus("Opening camera...");
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: "environment" } },
-        audio: false,
-      });
-
-      streamRef.current = stream;
-      if (!videoRef.current) return;
-
-      videoRef.current.srcObject = stream;
-      await videoRef.current.play();
-
-      const detector = new Detector({ formats: ["qr_code"] });
-      setScanRunning(true);
-
-      const loop = async () => {
-        if (!videoRef.current) return;
-
-        try {
-          const codes = await detector.detect(videoRef.current);
-          const qrValue = codes.find((c) => typeof c.rawValue === "string")?.rawValue;
-
-          if (qrValue) {
-            const parsed = parseQrPayload(qrValue);
-            if (!parsed) {
-              setStatus("Invalid QR format for minting.");
-              stopScanner();
-              return;
-            }
-
-            await mintFromParsedQr(parsed);
-            stopScanner();
-            return;
-          }
-        } catch {
-          // Ignore transient detection errors and keep scanning.
-        }
-
-        rafRef.current = requestAnimationFrame(loop);
-      };
-
-      rafRef.current = requestAnimationFrame(loop);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Camera access failed.";
-      setStatus(`Unable to start camera: ${message}`);
-      stopScanner();
-    }
-  }
-
-  async function mintFromParsedQr(parsed: ParsedQr) {
-    if (!connectedAddress) {
-      setStatus("Connect your account first.");
-      return;
-    }
-    if (!fullName.trim() || fullName.trim().length < 3) {
-      setStatus("Enter your full name before minting.");
-      return;
-    }
-
-    try {
-      setStatus("Mint transaction in progress...");
-      const metadataHashWithName = withFullNameMetadata(parsed.metadataHash, fullName);
-
-      const tx = new Transaction();
-      tx.moveCall({
-        target: TARGETS.issueCredential,
-        arguments: [
-          tx.object(parsed.registryId),
-          tx.object(parsed.issuerId),
-          tx.pure.address(connectedAddress),
-          tx.pure.vector("u8", toBytes(parsed.credentialType || "course")),
-          tx.pure.vector("u8", toBytes(metadataHashWithName)),
-        ],
-      });
-      tx.setGasBudget(100_000_000);
-
-      const result = (await signAndExecuteTransaction({ transaction: tx })) as {
-        digest?: string;
-      };
-
-      setStatus(`Mint submitted. Digest: ${result.digest ?? "submitted"}`);
-      credentialsQuery.refetch();
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Mint failed.";
-      setStatus(`Mint failed: ${message}`);
-    }
-  }
-
   function saveFullName() {
     const value = fullName.trim();
     if (!value || value.length < 3) {
@@ -452,7 +244,7 @@ export function UserDashboard() {
       setFullName(value);
       setFullNameSaved("Full name saved.");
       setIsNameLocked(true);
-      setStatus("Profile ready. You can mint your credential now.");
+      setStatus("Profile ready. Issuers can now mint credentials to this wallet.");
     } catch {
       setFullNameSaved("Unable to persist full name in browser storage.");
     }
@@ -597,7 +389,7 @@ export function UserDashboard() {
             <p className="tag">CredForge</p>
             <h1>Your Credentials</h1>
             <p className="heroSubtitle">
-              Connected with Google. Scan your certification QR and mint to your Sui wallet.
+              Connected with Google. Issued credentials will appear in this wallet automatically.
             </p>
 
             <div className="heroRow">
@@ -773,18 +565,6 @@ export function UserDashboard() {
                 </>
               ) : null}
             </section>
-
-            <article className="card scanCard sideCol">
-              <div className="scanActions">
-                <button type="button" onClick={startScanner} disabled={scanRunning}>
-                  Mint
-                </button>
-              </div>
-
-              {scanRunning ? (
-                <video ref={videoRef} className="scannerVideo hiddenScanner" playsInline muted />
-              ) : null}
-            </article>
 
             <article className="card verifyCard sideCol">
               <h2>Verify Issuer</h2>

@@ -9,7 +9,6 @@ import {
 import { Transaction } from "@mysten/sui/transactions";
 import clsx from "clsx";
 import { FormEvent, useState } from "react";
-import QRCode from "qrcode";
 import { REGISTRY_ID, TARGETS } from "@/lib/env";
 import { shortId, toBytes } from "@/lib/codec";
 
@@ -93,9 +92,6 @@ export function Dashboard() {
   const [trustCheckAddress, setTrustCheckAddress] = useState("");
   const [trustCheckResult, setTrustCheckResult] = useState<null | boolean>(null);
   const [txState, setTxState] = useState<TxState>(initialTxState);
-  const [qrPayload, setQrPayload] = useState("");
-  const [qrImage, setQrImage] = useState("");
-  const [qrError, setQrError] = useState("");
 
   async function execute(label: string, build: (tx: Transaction) => void) {
     if (!account?.address) {
@@ -289,45 +285,6 @@ export function Dashboard() {
     }
   }
 
-  async function onGenerateQr(event: FormEvent) {
-    event.preventDefault();
-    setQrError("");
-    setQrImage("");
-
-    if (!isHexAddress(registryId) || isZeroObjectId(registryId)) {
-      setQrError("Set a valid Registry Object ID before generating QR.");
-      return;
-    }
-    if (!isHexAddress(issuerId) || isZeroObjectId(issuerId)) {
-      setQrError("Set a valid Issuer Object ID before generating QR.");
-      return;
-    }
-    if (!metadataHash.trim()) {
-      setQrError("Metadata hash is required to generate the QR.");
-      return;
-    }
-
-    const payload = JSON.stringify({
-      registryId,
-      issuerId,
-      credentialType: credentialType || "course",
-      metadataHash: metadataHash.trim(),
-    });
-
-    try {
-      const dataUrl = await QRCode.toDataURL(payload, {
-        width: 260,
-        margin: 1,
-        errorCorrectionLevel: "M",
-      });
-      setQrPayload(payload);
-      setQrImage(dataUrl);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "QR generation failed.";
-      setQrError(message);
-    }
-  }
-
   return (
     <main className="shell">
       <section className="hero">
@@ -400,7 +357,7 @@ export function Dashboard() {
 
         <article className="card wide actionCard">
           <h2>3. Issue Credential</h2>
-          <p className="hint cardLead">Mint a soulbound credential directly to the recipient wallet.</p>
+          <p className="hint cardLead">Mint a soulbound credential directly into the recipient wallet.</p>
           <form onSubmit={onIssueCredential} className="columns2">
             <label>
               Recipient
@@ -427,49 +384,16 @@ export function Dashboard() {
               />
             </label>
             <button type="submit" className="full">
-              Issue Soulbound Credential
+              Mint SBT To Recipient
             </button>
           </form>
-        </article>
-
-        <article className="card wide actionCard">
-          <h2>3B. Generate Mint QR</h2>
-          <p className="hint cardLead">
-            Create a QR code so users can scan and mint the credential in the user app.
-          </p>
-          <form onSubmit={onGenerateQr} className="columns2">
-            <label>
-              Credential Type
-              <input
-                value={credentialType}
-                onChange={(event) => setCredentialType(event.target.value)}
-                placeholder="course | event | mentorship"
-              />
-            </label>
-            <label>
-              Metadata Hash
-              <input
-                value={metadataHash}
-                onChange={(event) => setMetadataHash(event.target.value)}
-                placeholder="sha256/ipfs-hash pointer"
-              />
-            </label>
-            <button type="submit" className="full">
-              Generate QR Code
-            </button>
-          </form>
-          {qrError ? <p className="hint">{qrError}</p> : null}
-          {qrImage ? (
-            <div className="qrBlock">
-              <img className="qrImage" src={qrImage} alt="Mint QR" />
-              <textarea className="qrPayload" readOnly value={qrPayload} />
-            </div>
-          ) : null}
         </article>
 
         <article className="card actionCard">
           <h2>4. Revoke</h2>
-          <p className="hint cardLead">Mark a credential as revoked while keeping its on-chain record.</p>
+          <p className="hint cardLead">
+            Revoke is temporarily disabled for wallet-owned SBTs in the current contract.
+          </p>
           <form onSubmit={onRevokeCredential}>
             <label>
               Credential Object ID
@@ -477,9 +401,12 @@ export function Dashboard() {
                 value={credentialId}
                 onChange={(event) => setCredentialId(event.target.value.trim())}
                 placeholder="0x..."
+                disabled
               />
             </label>
-            <button type="submit" className="cta">Revoke Credential</button>
+            <button type="submit" className="cta" disabled>
+              Revoke Unavailable
+            </button>
           </form>
         </article>
 

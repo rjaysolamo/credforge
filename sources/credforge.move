@@ -109,7 +109,9 @@ public fun issue_credential(
         recipient,
     });
 
-    transfer::share_object(credential);
+    // Issue as wallet-owned object to the recipient.
+    // `Credential` has `key` (without `store`), so recipients cannot publicly transfer it.
+    transfer::transfer(credential, recipient);
 }
 
 
@@ -159,7 +161,8 @@ public fun batch_issue(
             recipient,
         });
 
-        transfer::share_object(credential);
+        // Same SBT semantics for batch minting: owned by recipient, non-publicly transferable.
+        transfer::transfer(credential, recipient);
     };
 }
 
