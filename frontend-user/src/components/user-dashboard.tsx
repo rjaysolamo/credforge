@@ -18,6 +18,7 @@ import { REGISTRY_ID } from "@/lib/env";
 
 type CredentialRow = {
   objectId: string;
+  txDigest: string;
   recipient: string;
   issuer: string;
   credentialType: string;
@@ -26,8 +27,14 @@ type CredentialRow = {
   revoked: boolean;
 };
 
-const FULL_NAME_STORAGE_KEY = "credforge_full_name";
-const PROFILE_IMAGE_STORAGE_KEY = "credforge_profile_image";
+const FULL_NAME_STORAGE_KEY_PREFIX = "credforge_full_name";
+const PROFILE_IMAGE_STORAGE_KEY_PREFIX = "credforge_profile_image";
+
+function walletScopedStorageKey(prefix: string, address: string): string | null {
+  const normalized = address.trim().toLowerCase();
+  if (!normalized) return null;
+  return `${prefix}:${normalized}`;
+}
 
 function SuiLogoMark() {
   return (
@@ -84,6 +91,75 @@ function toIpfsUrl(hash: string): string {
     return `https://ipfs.io/ipfs/${value.replace("ipfs://", "")}`;
   }
   return `https://ipfs.io/ipfs/${value}`;
+}
+
+function testnetTxUrl(digest: string): string {
+  return `https://suiscan.xyz/testnet/tx/${digest}`;
+}
+
+function fitNameFontSize(
+  ctx: CanvasRenderingContext2D,
+  name: string,
+  maxWidth: number,
+): number {
+  let size = 54;
+  const min = 24;
+  while (size > min) {
+    ctx.font = `700 ${size}px "Times New Roman", serif`;
+    if (ctx.measureText(name).width <= maxWidth) return size;
+    size -= 2;
+  }
+  return min;
+}
+
+async function renderCertificateWithName(
+  imageUrl: string,
+  fullName: string,
+): Promise<string> {
+  const name = fullName.trim();
+  if (!name) return imageUrl;
+
+  try {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.referrerPolicy = "no-referrer";
+    const loaded = new Promise<void>((resolve, reject) => {
+      img.onload = () => resolve();
+      img.onerror = () => reject(new Error("Certificate image failed to load."));
+    });
+    img.src = imageUrl;
+    await loaded;
+
+    const width = img.naturalWidth || 1400;
+    const height = img.naturalHeight || 1000;
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return imageUrl;
+
+    ctx.drawImage(img, 0, 0, width, height);
+
+    // Align the recipient name to the blank line under "This is proudly presented to".
+    const maxTextWidth = width * 0.58;
+    const fontSize = fitNameFontSize(ctx, name, maxTextWidth);
+    const y = Math.round(height * 0.34);
+
+    ctx.font = `700 ${fontSize}px "Times New Roman", serif`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+
+    ctx.strokeStyle = "rgba(38, 20, 58, 0.85)";
+    ctx.lineWidth = Math.max(3, Math.round(fontSize * 0.11));
+    ctx.strokeText(name, width / 2, y);
+
+    ctx.fillStyle = "#f3eefb";
+    ctx.fillText(name, width / 2, y);
+
+    return canvas.toDataURL("image/png");
+  } catch {
+    return imageUrl;
+  }
 }
 
 function ipfsCandidates(value: string): string[] {
@@ -173,12 +249,20 @@ export function UserDashboard() {
   );
   const lookupOwner = currentAccount?.address || "";
   const connectedAddress = currentAccount?.address ?? "";
+  const fullNameStorageKey = walletScopedStorageKey(
+    FULL_NAME_STORAGE_KEY_PREFIX,
+    connectedAddress,
+  );
+  const profileImageStorageKey = walletScopedStorageKey(
+    PROFILE_IMAGE_STORAGE_KEY_PREFIX,
+    connectedAddress,
+  );
 
   const credentialsQuery = useSuiClientQuery(
     "getOwnedObjects",
     {
       owner: lookupOwner || "0x0",
-      options: { showContent: true, showType: true },
+      options: { showContent: true, showType: true, showPreviousTransaction: true },
     },
     { enabled: !!lookupOwner },
   );
@@ -197,6 +281,7 @@ export function UserDashboard() {
 
       return {
         objectId: item.data?.objectId ?? "",
+        txDigest: item.data?.previousTransaction ?? "",
         recipient: String(fields.recipient ?? ""),
         issuer: String(fields.issuer ?? ""),
         credentialType: decodeMaybeBytes(fields.credential_type),
@@ -206,28 +291,51 @@ export function UserDashboard() {
       };
     });
   }, [credentialsQuery.data?.data]);
+  const certificateName = isNameLocked ? fullName.trim() : "";
 
   useEffect(() => {
+    if (!fullNameStorageKey) {
+      setFullName("");
+      setIsNameLocked(false);
+      setFullNameSaved("");
+      return;
+    }
+
     try {
-      const saved = window.localStorage.getItem(FULL_NAME_STORAGE_KEY) || "";
+      const saved = window.localStorage.getItem(fullNameStorageKey) || "";
       if (saved) {
         setFullName(saved);
         setIsNameLocked(true);
         setFullNameSaved("Full name saved.");
+      } else {
+        setFullName("");
+        setIsNameLocked(false);
+        setFullNameSaved("");
       }
     } catch {
       // Ignore localStorage read issues.
     }
-  }, []);
+  }, [fullNameStorageKey]);
 
   useEffect(() => {
+    if (!profileImageStorageKey) {
+      setProfileImage("");
+      setProfileImageMessage("");
+      return;
+    }
+
     try {
-      const saved = window.localStorage.getItem(PROFILE_IMAGE_STORAGE_KEY) || "";
-      if (saved) setProfileImage(saved);
+      const saved = window.localStorage.getItem(profileImageStorageKey) || "";
+      setProfileImage(saved);
+      setProfileImageMessage("");
     } catch {
       // Ignore localStorage read issues.
     }
-  }, []);
+  }, [profileImageStorageKey]);
+
+  useEffect(() => {
+    setImageByObjectId({});
+  }, [lookupOwner, certificateName]);
 
   useEffect(() => {
     let cancelled = false;
@@ -241,7 +349,8 @@ export function UserDashboard() {
       const entries = await Promise.all(
         missing.map(async (row) => {
           const imageUrl = await resolveCredentialImage(row.metadataHash);
-          return [row.objectId, imageUrl] as const;
+          const personalized = await renderCertificateWithName(imageUrl, certificateName);
+          return [row.objectId, personalized] as const;
         }),
       );
 
@@ -259,7 +368,7 @@ export function UserDashboard() {
     return () => {
       cancelled = true;
     };
-  }, [rows, imageByObjectId]);
+  }, [rows, imageByObjectId, certificateName]);
 
   function saveFullName() {
     const value = fullName.trim();
@@ -267,8 +376,12 @@ export function UserDashboard() {
       setStatus("Please provide your full name (at least 3 characters).");
       return;
     }
+    if (!fullNameStorageKey) {
+      setFullNameSaved("Connect a wallet before saving your name.");
+      return;
+    }
     try {
-      window.localStorage.setItem(FULL_NAME_STORAGE_KEY, value);
+      window.localStorage.setItem(fullNameStorageKey, value);
       setFullName(value);
       setFullNameSaved("Full name saved.");
       setIsNameLocked(true);
@@ -296,8 +409,12 @@ export function UserDashboard() {
       if (!result) return;
       setProfileImage(result);
       setProfileImageMessage("Profile photo updated.");
+      if (!profileImageStorageKey) {
+        setProfileImageMessage("Connect a wallet before saving your photo.");
+        return;
+      }
       try {
-        window.localStorage.setItem(PROFILE_IMAGE_STORAGE_KEY, result);
+        window.localStorage.setItem(profileImageStorageKey, result);
       } catch {
         setProfileImageMessage("Profile photo set, but could not be saved.");
       }
@@ -308,8 +425,9 @@ export function UserDashboard() {
   function clearProfileImage() {
     setProfileImage("");
     setProfileImageMessage("Profile photo cleared.");
+    if (!profileImageStorageKey) return;
     try {
-      window.localStorage.removeItem(PROFILE_IMAGE_STORAGE_KEY);
+      window.localStorage.removeItem(profileImageStorageKey);
     } catch {
       // Ignore localStorage failures.
     }
@@ -382,6 +500,15 @@ export function UserDashboard() {
     }
   }
 
+  function signOut() {
+    disconnectWallet();
+    setStatus("Signed out. Use Google sign-in for a different account.");
+    setTrustMessage("");
+    setTrustResult(null);
+    setCopyMessage("");
+    setPreviewImage("");
+  }
+
   return (
     <main className="shell">
       {!isConnected ? (
@@ -450,7 +577,7 @@ export function UserDashboard() {
             </p>
 
             <div className="heroRow">
-              <button type="button" className="secondary" onClick={() => disconnectWallet()}>
+              <button type="button" className="secondary" onClick={signOut}>
                 Sign Out
               </button>
             </div>
@@ -538,7 +665,6 @@ export function UserDashboard() {
                     {rows.map((row) => (
                       <article key={`mobile-${row.objectId}`} className="credentialItem">
                         <div className="credentialTop">
-                          <strong>{row.credentialType || "Credential"}</strong>
                           <span className={clsx("badge", row.revoked ? "badText" : "okText")}>
                             {row.revoked ? "Revoked" : "Active"}
                           </span>
@@ -562,7 +688,20 @@ export function UserDashboard() {
                             <span>-</span>
                           )}
                         </div>
-                        <p><strong>ID:</strong> {shortId(row.objectId)}</p>
+                        <p>
+                          <strong>Credential tx:</strong>{" "}
+                          {row.txDigest ? (
+                            <a
+                              href={testnetTxUrl(row.txDigest)}
+                              target="_blank"
+                              rel="noreferrer"
+                            >
+                              {shortId(row.txDigest)}
+                            </a>
+                          ) : (
+                            "-"
+                          )}
+                        </p>
                         <p><strong>Issuer:</strong> {shortId(row.issuer)}</p>
                         <p><strong>Recipient:</strong> {shortId(row.recipient)}</p>
                         <p><strong>Issued:</strong> {formatIssuedAt(row.issuedAt)}</p>
@@ -573,8 +712,7 @@ export function UserDashboard() {
                     <table>
                       <thead>
                         <tr>
-                          <th>Credential ID</th>
-                          <th>Type</th>
+                          <th>Credential tx</th>
                           <th>Certificate</th>
                           <th>Issuer</th>
                           <th>Recipient</th>
@@ -585,8 +723,19 @@ export function UserDashboard() {
                       <tbody>
                         {rows.map((row) => (
                           <tr key={row.objectId}>
-                            <td title={row.objectId}>{shortId(row.objectId)}</td>
-                            <td>{row.credentialType || "-"}</td>
+                            <td title={row.txDigest || "-"}>
+                              {row.txDigest ? (
+                                <a
+                                  href={testnetTxUrl(row.txDigest)}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                >
+                                  {shortId(row.txDigest)}
+                                </a>
+                              ) : (
+                                "-"
+                              )}
+                            </td>
                             <td>
                               {row.metadataHash ? (
                                 <button

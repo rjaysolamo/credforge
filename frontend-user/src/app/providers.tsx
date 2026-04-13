@@ -160,7 +160,7 @@ export function Providers({ children }: { children: ReactNode }) {
         networks={networkConfig}
         defaultNetwork={suiNetwork}
       >
-        <WalletProvider autoConnect>
+        <WalletProvider autoConnect={false}>
           <EnokiBootstrapContext.Provider value={bootstrapState}>
             {children}
           </EnokiBootstrapContext.Provider>
