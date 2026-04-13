@@ -158,6 +158,51 @@ sui client call \
   --gas-budget 10000000
 ```
 
+## Admin CLI (No-Click Issuance)
+
+Use the scripts below to issue credentials without using the admin UI.
+
+Single issue:
+
+```bash
+./scripts/issue-credential.sh <RECIPIENT_ADDRESS> <CREDENTIAL_URL> [CREDENTIAL_TYPE]
+```
+
+Example:
+
+```bash
+./scripts/issue-credential.sh \
+  0x853a550d288b57445646b7380cd084328426c36691d457e14d0f7fe3ffeca327 \
+  "https://rose-imaginative-lion-87.mypinata.cloud/ipfs/<CID>"
+```
+
+Batch issue from CSV:
+
+```bash
+./scripts/batch-issue.sh ./path/to/issuance.csv
+```
+
+CSV format:
+
+```csv
+recipient,credential_url,credential_type
+0xabc...,https://.../ipfs/...,SBT_NFT
+0xdef...,https://.../ipfs/...,COURSE_CERT
+```
+
+Useful options:
+
+- `./scripts/issue-credential.sh --dry-run <recipient> <url> [type]`
+- `DRY_RUN=true ./scripts/batch-issue.sh ./issuance.csv`
+
+Environment overrides:
+
+- `PACKAGE_ID`
+- `REGISTRY_ID`
+- `ISSUER_OBJECT_ID`
+- `CREDENTIAL_TYPE`
+- `GAS_BUDGET`
+
 ## Known Limitations
 
 - Current `revoke_credential` signature requires mutable access to a wallet-owned `Credential`, so issuer-side revoke from admin UI is not currently practical without contract/API adjustments.

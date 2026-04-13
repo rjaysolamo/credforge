@@ -323,3 +323,99 @@ code {
   border: 1px solid rgba(255,255,255,0.18);
   background: rgba(255,255,255,0.08);
 }
+
+.cliGrid .card {
+  grid-column: span 4;
+}
+
+.cliGrid .card.wide {
+  grid-column: span 8;
+}
+
+.terminalOutput {
+  width: 100%;
+  min-height: 280px;
+  max-height: 420px;
+  overflow: auto;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: #061525;
+  padding: 0.55rem 0.6rem;
+  font-family: "IBM Plex Mono", "SFMono-Regular", Menlo, monospace;
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.terminalOutput p {
+  margin: 0;
+  color: #d3e9f7;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.terminalOutput p + p {
+  margin-top: 0.24rem;
+}
+
+.cliForm {
+  margin-top: 0.5rem;
+}
+
+.cliHint {
+  margin-top: 0.35rem;
+}
+
+.cliQuickActions {
+  margin-top: 0.55rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.36rem;
+}
+
+.cliCommandCard {
+  padding-top: 0.65rem;
+}
+
+.cliCommandBox {
+  width: 100%;
+  min-height: 96px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  background: rgba(8, 15, 25, 0.6);
+  color: var(--text);
+  padding: 0.45rem 0.55rem;
+  resize: vertical;
+  font-size: 0.82rem;
+  line-height: 1.35;
+  font-family: "IBM Plex Mono", "SFMono-Regular", Menlo, monospace;
+}
+
+.cliCommandActions {
+  margin-top: 0.42rem;
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.stepsInline {
+  margin-bottom: 0.55rem;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 10px;
+  background: rgba(8, 15, 25, 0.42);
+  padding: 0.5rem 0.6rem;
+}
+
+.stepsInline p {
+  margin: 0;
+  color: #d7e9f6;
+  line-height: 1.4;
+}
+
+.stepsInline p + p {
+  margin-top: 0.28rem;
+}
+
+.stepsInline code {
+  font-size: 0.8rem;
+}
